@@ -8,13 +8,12 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-
 import { API_BASE } from "../src/api/index";
 
 export default function Login() {
@@ -33,12 +32,10 @@ export default function Login() {
     }
 
     await AsyncStorage.setItem("user", JSON.stringify(userData));
-    router.replace("/(tabs)/forward");
+    router.replace("/splash");
   }
 
   async function handleLogin() {
-    console.log("Login button pressed");
-
     if (!name || !password) {
       return Alert.alert("Error", "Nama dan password wajib diisi");
     }
@@ -51,179 +48,100 @@ export default function Login() {
       });
 
       const json = await res.json();
-      console.log("LOGIN RESPONSE:", json);
-
-      if (!json.success) {
-        return Alert.alert("Login gagal", json.message);
-      }
+      if (!json.success) return Alert.alert("Login gagal", json.message);
 
       await AsyncStorage.setItem("token", json.token);
       await AsyncStorage.setItem("user", JSON.stringify(json.driver));
 
       setPendingUser(json.driver);
       setLocationPrompt(true);
-    } catch (err) {
-      console.log("LOGIN ERROR:", err);
+    } catch {
       Alert.alert("Error", "Server tidak dapat dihubungi");
     }
   }
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      <ScrollView
-        contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}
+    <View style={styles.screenWrapper}>
+      {/* ⭐ Tetap center sebelum keyboard muncul */}
+      <KeyboardAvoidingView
+        style={styles.inner}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 20 : 0}
       >
-        <View style={{ padding: 20 }}>
+        {/* HERO - tidak bergerak saat keyboard muncul */}
+        <View style={styles.heroWrapper}>
           <Image
-            source={require("../assets/images/logo.png")}
-            style={{
-              width: 150,
-              height: 150,
-              alignSelf: "center",
-              marginBottom: 20,
-            }}
+            source={require("../assets/images/hero.png")}
+            style={styles.hero}
+            resizeMode="contain"
           />
+        </View>
 
-          <Text
-            style={{ textAlign: "center", fontSize: 20, fontWeight: "bold" }}
-          >
-            PT INDONESIA KOITO
+        {/* FORM - hanya bagian ini yang naik */}
+        <View style={styles.formWrapper}>
+          <Text style={styles.title}>
+            Welcome to{" "}
+            <Text style={{ color: "#e8532a", fontWeight: "bold" }}>TRAMO!</Text>
           </Text>
 
-          {/* NAME */}
+          <Text style={styles.subtitle}>
+            Your go-to app for real-time trucking and logistics tracking.
+          </Text>
+
           <TextInput
             placeholder="Nama Lengkap"
+            placeholderTextColor="#888"
             value={name}
             onChangeText={setName}
-            style={{
-              backgroundColor: "#FFF",
-              padding: 12,
-              marginTop: 30,
-              borderRadius: 10,
-              borderWidth: 1,
-              borderColor: "#ddd",
-            }}
+            style={styles.input}
           />
 
-          {/* PASSWORD */}
           <TextInput
             placeholder="Password"
+            placeholderTextColor="#888"
             secureTextEntry
             value={password}
             onChangeText={setPassword}
-            style={{
-              backgroundColor: "#FFF",
-              padding: 12,
-              marginTop: 20,
-              borderRadius: 10,
-              borderWidth: 1,
-              borderColor: "#ddd",
-            }}
+            style={styles.input}
           />
 
-          {/* LOGIN BUTTON */}
-          <TouchableOpacity
-            style={{
-              backgroundColor: "green",
-              padding: 15,
-              borderRadius: 10,
-              marginTop: 30,
-            }}
-            onPress={handleLogin}
-          >
-            <Text
-              style={{
-                color: "white",
-                textAlign: "center",
-                fontWeight: "bold",
-              }}
-            >
-              LOGIN
-            </Text>
+          <TouchableOpacity style={styles.loginBtn} onPress={handleLogin}>
+            <Text style={styles.loginText}>Log in</Text>
           </TouchableOpacity>
 
-          {/* REGISTER */}
-          <TouchableOpacity
-            style={{
-              backgroundColor: "red",
-              padding: 15,
-              borderRadius: 10,
-              marginTop: 10,
-            }}
-            onPress={() => router.push("./register")}
-          >
-            <Text
-              style={{
-                color: "white",
-                textAlign: "center",
-                fontWeight: "bold",
-              }}
-            >
-              DAFTAR
-            </Text>
-          </TouchableOpacity>
+          <Text style={styles.terms}>
+            By logging in, you agree to our{" "}
+            <Text style={styles.link}>Terms of service</Text> and{" "}
+            <Text style={styles.link}>Privacy policy</Text>.
+          </Text>
         </View>
-      </ScrollView>
+      </KeyboardAvoidingView>
 
-      {/* ===================== */}
-      {/*  MODAL IZIN LOKASI   */}
-      {/* ===================== */}
+      {/* Modal Izin Lokasi */}
       {locationPrompt && (
-        <View
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0,0,0,0.4)",
-            justifyContent: "center",
-            alignItems: "center",
-            padding: 20,
-            zIndex: 999,
-          }}
-        >
-          <View
-            style={{
-              backgroundColor: "white",
-              width: "100%",
-              borderRadius: 16,
-              padding: 20,
-            }}
-          >
-            <Text style={{ fontSize: 40, textAlign: "center" }}>📍</Text>
-
-            <Text
-              style={{
-                fontSize: 18,
-                fontWeight: "bold",
-                textAlign: "center",
-                marginTop: 10,
+        <View style={styles.modalWrapper}>
+          <View style={styles.modal}>
+            <Image
+              source={{
+                uri: "https://img.icons8.com/?size=100&id=13800&format=png&color=e8532a",
               }}
-            >
-              Aktifkan Lokasi
-            </Text>
-
-            <Text
               style={{
-                textAlign: "center",
-                color: "#555",
-                marginTop: 8,
+                width: 50,
+                height: 50,
+                alignSelf: "center",
+                marginBottom: 10,
               }}
-            >
+              resizeMode="contain"
+            />
+
+            <Text style={styles.modalTitle}>Aktifkan Lokasi</Text>
+
+            <Text style={styles.modalDesc}>
               Aplikasi membutuhkan izin lokasi untuk melanjutkan ke dashboard.
             </Text>
 
             <TouchableOpacity
-              style={{
-                backgroundColor: "#2563eb",
-                paddingVertical: 12,
-                borderRadius: 10,
-                marginTop: 20,
-              }}
+              style={styles.modalBtn}
               onPress={async () => {
                 if (pendingUser) {
                   await requestLocationAndContinue(pendingUser);
@@ -231,23 +149,12 @@ export default function Login() {
                 }
               }}
             >
-              <Text
-                style={{
-                  color: "white",
-                  fontWeight: "bold",
-                  textAlign: "center",
-                }}
-              >
-                Izinkan & Lanjutkan
-              </Text>
+              <Text style={styles.modalBtnText}>Izinkan & Lanjutkan</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={{ marginTop: 12 }}
-              onPress={() => setLocationPrompt(false)}
-            >
+            <TouchableOpacity onPress={() => setLocationPrompt(false)}>
               <Text
-                style={{ color: "#ef4444", textAlign: "center", marginTop: 10 }}
+                style={{ color: "#e8532a", textAlign: "center", marginTop: 10 }}
               >
                 Batal
               </Text>
@@ -255,6 +162,139 @@ export default function Login() {
           </View>
         </View>
       )}
-    </KeyboardAvoidingView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  screenWrapper: {
+    flex: 1,
+    backgroundColor: "white",
+  },
+
+  // ⭐ seluruh halaman tetap center sebelum keyboard muncul
+  inner: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+
+  heroWrapper: {
+    width: "100%",
+    height: 220,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  hero: {
+    width: "100%",
+    height: "100%",
+  },
+
+  formWrapper: {
+    width: "100%",
+    alignItems: "center",
+    marginTop: 10,
+  },
+
+  title: {
+    fontSize: 22,
+    fontWeight: "bold",
+    textAlign: "center",
+  },
+
+  subtitle: {
+    textAlign: "center",
+    color: "#555",
+    marginTop: 6,
+    fontSize: 14,
+    width: "85%",
+  },
+
+  input: {
+    backgroundColor: "#F5F5F5",
+    width: "100%",
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E2E2E2",
+    marginTop: 10,
+    fontSize: 16,
+    color: "#333",
+  },
+
+  loginBtn: {
+    backgroundColor: "#e8532a",
+    width: "100%",
+    paddingVertical: 16,
+    borderRadius: 30,
+    marginTop: 20,
+  },
+
+  loginText: {
+    color: "white",
+    textAlign: "center",
+    fontWeight: "bold",
+    fontSize: 16,
+  },
+
+  terms: {
+    textAlign: "center",
+    fontSize: 12,
+    marginTop: 20,
+    color: "#666",
+    width: "85%",
+  },
+
+  link: {
+    color: "#e8532a",
+    fontWeight: "600",
+  },
+
+  modalWrapper: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+
+  modal: {
+    backgroundColor: "white",
+    width: "100%",
+    borderRadius: 16,
+    padding: 20,
+  },
+
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    textAlign: "center",
+    marginTop: 10,
+  },
+
+  modalDesc: {
+    textAlign: "center",
+    color: "#555",
+    marginTop: 8,
+  },
+
+  modalBtn: {
+    backgroundColor: "#e8532a",
+    paddingVertical: 12,
+    borderRadius: 10,
+    marginTop: 20,
+  },
+
+  modalBtnText: {
+    color: "white",
+    fontWeight: "bold",
+    textAlign: "center",
+  },
+});
