@@ -19,19 +19,33 @@ import { API_BASE } from "../../src/api";
 import styles from "../style/homeStyles";
 
 export default function ForwardScreen() {
+  // ============================
+  // DESTINATIONS FINAL
+  // ============================
   const destinations = [
     "Select Destinasi",
-    "Yamaha PG Lokal PO 1",
-    "Yamaha PG Lokal PO 2",
-    "Yamaha PG Lokal PO 3",
-    "Yamaha PG export cycle 1",
-    "Yamaha PG export cycle 2",
-    "Yamaha Karawang PO 1",
-    "Yamaha Karawang PO 2",
-    "Yamaha Karawang PO 3",
+    "YIMM PG LOKAL PO 1",
+    "YIMM PG LOKAL PO 2",
+    "YIMM PG LOKAL PO 3",
   ];
 
+  function getPlanTimes() {
+    const key = destinations[destinationIndex];
+    switch (key) {
+      case "YIMM PG LOKAL PO 1":
+        return { etd: "05:00", eta: "08:00" };
+      case "YIMM PG LOKAL PO 2":
+        return { etd: "08:00", eta: "13:00" };
+      case "YIMM PG LOKAL PO 3":
+        return { etd: "14:00", eta: "19:00" };
+      default:
+        return { etd: "-", eta: "-" };
+    }
+  }
+
+  // ============================
   // STATE
+  // ============================
   const [plateNumber, setPlateNumber] = useState("");
   const [plateStatus, setPlateStatus] = useState<"pending" | "sent">("pending");
   const [etdStatus, setEtdStatus] = useState<"pending" | "sent">("pending");
@@ -41,39 +55,28 @@ export default function ForwardScreen() {
   const [dropdownVisible, setDropdownVisible] = useState(false);
   const [userName, setUserName] = useState("");
 
-  // STORAGE KEYS
   const FORM_KEY = "forward_form";
   const STATUS_KEY = "status_forward";
-  const STATUS_KEY_REVERSE = "status_reverse";
 
   // ============================
   // AUTO LOGIN CHECK
   // ============================
   useEffect(() => {
-    let mounted = true;
-
-    async function ensureLoggedIn() {
+    async function check() {
       const token = await AsyncStorage.getItem("token");
       const user = await AsyncStorage.getItem("user");
-
-      if (!mounted) return;
-
       if (!token || !user) router.replace("/login");
     }
-
-    ensureLoggedIn();
-    return () => {
-      mounted = false;
-    };
+    check();
   }, []);
 
   // ============================
-  // LOAD SAVED DATA
+  // LOAD DATA
   // ============================
   useEffect(() => {
     loadUser();
     loadStatus();
-    loadFormData();
+    loadForm();
   }, []);
 
   async function loadUser() {
@@ -89,28 +92,27 @@ export default function ForwardScreen() {
     try {
       const stored = await AsyncStorage.getItem(STATUS_KEY);
       if (!stored) return;
-      const parsed = JSON.parse(stored);
 
+      const parsed = JSON.parse(stored);
       setPlateStatus(parsed?.plate || "pending");
       setEtdStatus(parsed?.etd || "pending");
       setEtaStatus(parsed?.eta || "pending");
     } catch {}
   }
 
-  async function loadFormData() {
+  async function loadForm() {
     try {
       const stored = await AsyncStorage.getItem(FORM_KEY);
       if (!stored) return;
 
       const parsed = JSON.parse(stored);
-
-      if (parsed?.plateNumber) setPlateNumber(parsed.plateNumber);
-      if (parsed?.destinationIndex >= 0)
+      if (parsed.plateNumber) setPlateNumber(parsed.plateNumber);
+      if (parsed.destinationIndex >= 0)
         setDestinationIndex(parsed.destinationIndex);
     } catch {}
   }
 
-  // AUTO-SAVE plate + destination
+  // AUTO SAVE FORM
   useEffect(() => {
     AsyncStorage.setItem(
       FORM_KEY,
@@ -121,23 +123,38 @@ export default function ForwardScreen() {
     );
   }, [plateNumber, destinationIndex]);
 
+  // SYNC TO REVERSE
+  async function syncToReverse() {
+    try {
+      await AsyncStorage.setItem(
+        "reverse_form",
+        JSON.stringify({
+          plateNumber,
+          destinationIndex,
+        })
+      );
+    } catch {}
+  }
+
   function persistStatus(next: {
     plate?: "pending" | "sent";
     etd?: "pending" | "sent";
     eta?: "pending" | "sent";
   }) {
-    const combined = {
-      plate: next.plate ?? plateStatus,
-      etd: next.etd ?? etdStatus,
-      eta: next.eta ?? etaStatus,
-    };
-    AsyncStorage.setItem(STATUS_KEY, JSON.stringify(combined));
+    AsyncStorage.setItem(
+      STATUS_KEY,
+      JSON.stringify({
+        plate: next.plate ?? plateStatus,
+        etd: next.etd ?? etdStatus,
+        eta: next.eta ?? etaStatus,
+      })
+    );
   }
 
   // ============================
-  // SEND STATUS TO API
+  // SEND API
   // ============================
-  async function sendStatus(payload: any) {
+  async function sendStatus(body: any) {
     try {
       const token = await AsyncStorage.getItem("token");
       if (!token) {
@@ -153,128 +170,105 @@ export default function ForwardScreen() {
         },
         body: JSON.stringify({
           direction: "forward",
-          ...payload,
+          origin: "PT Indonesia Koito",
+          destination:
+            destinationIndex === 0 ? null : destinations[destinationIndex],
+          ...body,
         }),
       });
 
-      if (!res.ok) {
-        const msg = await res.text();
-        throw new Error(`Status ${res.status}: ${msg}`);
-      }
-
+      if (!res.ok) return false;
       return true;
-    } catch (e) {
-      Alert.alert("Gagal kirim status", e instanceof Error ? e.message : "");
+    } catch {
       return false;
     }
   }
 
-  function getNowTime() {
-    const now = new Date();
-    return `${String(now.getHours()).padStart(2, "0")}:${String(
-      now.getMinutes()
-    ).padStart(2, "0")}`;
-  }
-
-  function getPlanTimes() {
-    const key = destinations[destinationIndex];
-    switch (key) {
-      case "Yamaha PG Lokal PO 1":
-      case "Yamaha PG export cycle 1":
-      case "Yamaha Karawang PO 1":
-        return { etd: "05:00", eta: "08:00" };
-      case "Yamaha PG Lokal PO 2":
-      case "Yamaha Karawang PO 2":
-        return { etd: "08:00", eta: "13:00" };
-      case "Yamaha PG Lokal PO 3":
-      case "Yamaha PG export cycle 2":
-      case "Yamaha Karawang PO 3":
-        return { etd: "14:00", eta: "19:00" };
-      default:
-        return { etd: "-", eta: "-" };
-    }
+  function now() {
+    const d = new Date();
+    return `${d.getHours().toString().padStart(2, "0")}:${d
+      .getMinutes()
+      .toString()
+      .padStart(2, "0")}`;
   }
 
   // ============================
-  // ACTION HANDLERS
+  // HANDLERS
   // ============================
-  async function handlePlateSubmit() {
+  async function handlePlate() {
     if (!plateNumber.trim())
-      return Alert.alert("Nopol kosong", "Isi nomor polisi");
+      return Alert.alert("Nopol kosong", "Isi nomor polisi terlebih dahulu");
+
+    if (destinationIndex === 0)
+      return Alert.alert("Pilih Destinasi", "Anda harus memilih tujuan dahulu");
 
     const ok = await sendStatus({
       plate: plateNumber,
-      destination: destinations[destinationIndex],
     });
 
-    if (!ok) return;
+    if (!ok) return Alert.alert("Gagal", "Coba lagi");
 
     setPlateStatus("sent");
     persistStatus({ plate: "sent" });
-    Alert.alert("Nopol Terkirim");
+
+    await syncToReverse();
+
+    Alert.alert("Success", "Nopol terkirim");
   }
 
-  async function handleUpdateEtd() {
-    const time = getNowTime();
+  async function handleETD() {
+    if (destinationIndex === 0)
+      return Alert.alert("Pilih Destinasi", "Anda harus memilih tujuan dahulu");
 
+    const t = now();
     const ok = await sendStatus({
-      etdTime: time,
-      destination: destinations[destinationIndex],
+      etdTime: t,
     });
 
     if (!ok) return;
 
     setEtdStatus("sent");
     persistStatus({ etd: "sent" });
-    Alert.alert("ETD dikirim", time);
+
+    Alert.alert("ETD dikirim", t);
   }
 
-  async function handleUpdateEta() {
-    const time = getNowTime();
+  async function handleETA() {
+    if (destinationIndex === 0)
+      return Alert.alert("Pilih Destinasi", "Anda harus memilih tujuan dahulu");
 
-    const ok = await sendStatus({
-      etaTime: time,
-      destination: destinations[destinationIndex],
-    });
-
+    const t = now();
+    const ok = await sendStatus({ etaTime: t });
     if (!ok) return;
 
     setEtaStatus("sent");
     persistStatus({ eta: "sent" });
-    Alert.alert("ETA dikirim", time);
+
+    Alert.alert("ETA dikirim", t);
   }
 
-  // ============================
-  // LOGOUT (tidak reset data)
-  // ============================
-  async function handleLogout() {
-    await AsyncStorage.removeItem("user");
-    await AsyncStorage.removeItem("token");
-
-    // ⚠ Data ETD/ETA/Nopol/Status TIDAK DIHAPUS
-
+  async function logout() {
+    await AsyncStorage.multiRemove(["user", "token", FORM_KEY, STATUS_KEY]);
     router.replace("/login");
   }
 
   // ============================
-  // UI RENDER
+  // UI
   // ============================
   return (
     <View style={styles.screen}>
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-        scrollEnabled={false}
       >
-        {/* HEADER */}
         <View style={styles.header}>
-          <Text style={styles.hello}>{`Hello, ${userName}`}</Text>
+          <Text style={styles.hello}>Hello, {userName}</Text>
           <Text style={styles.subtitle}>Your deliveries for today:</Text>
         </View>
 
         {/* MAIN CARD */}
         <View style={styles.card}>
+          {/* ICON */}
           <View style={styles.iconRow}>
             <View style={[styles.iconWrap, styles.iconWrapActive]}>
               <MaterialCommunityIcons
@@ -297,7 +291,7 @@ export default function ForwardScreen() {
             </Pressable>
           </View>
 
-          {/* FROM */}
+          {/* FROM (fixed) */}
           <View style={styles.row}>
             <Text style={styles.label}>From</Text>
             <Text style={styles.colon}>:</Text>
@@ -312,35 +306,34 @@ export default function ForwardScreen() {
             <View style={styles.inputRow}>
               <TextInput
                 style={styles.input}
-                placeholder="Masukkan nomor polisi"
-                placeholderTextColor="#94a3b8"
+                placeholder="Masukkan nopol"
                 value={plateNumber}
                 onChangeText={setPlateNumber}
+                editable={etaStatus !== "sent"}
               />
 
               <TouchableOpacity
                 disabled={plateStatus === "sent"}
                 style={[
                   styles.okButton,
-                  plateStatus === "sent"
-                    ? styles.buttonSent
-                    : styles.buttonPending,
+                  styles.buttonPending, // tetap oranye, tidak hijau
+                  plateStatus === "sent" && { opacity: 0.6 },
                 ]}
-                onPress={handlePlateSubmit}
+                onPress={handlePlate}
               >
                 <Text style={styles.okButtonText}>OK</Text>
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* DESTINATION */}
+          {/* DESTINATION DROPDOWN */}
           <View style={styles.row}>
             <Text style={styles.label}>To</Text>
             <Text style={styles.colon}>:</Text>
 
             <Pressable
               style={styles.select}
-              onPress={() => setDropdownVisible(true)}
+              onPress={() => etaStatus !== "sent" && setDropdownVisible(true)}
             >
               <Text style={styles.selectText}>
                 {destinations[destinationIndex]}
@@ -350,12 +343,10 @@ export default function ForwardScreen() {
           </View>
         </View>
 
-        {/* CARD 2 */}
+        {/* SECOND CARD */}
         <View style={styles.card}>
           <Text style={styles.statusValue}>
-            {destinationIndex === 0
-              ? "No data"
-              : destinations[destinationIndex]}
+            {destinations[destinationIndex]}
           </Text>
 
           <View style={styles.timeRow}>
@@ -370,34 +361,38 @@ export default function ForwardScreen() {
             <Text style={styles.timeValue}>{getPlanTimes().eta}</Text>
           </View>
 
-          <View style={styles.actionRow}>
-            <TouchableOpacity
-              disabled={etdStatus === "sent"}
-              style={[
-                styles.actionButton,
-                etdStatus === "sent" ? styles.buttonSent : styles.buttonPending,
-              ]}
-              onPress={handleUpdateEtd}
-            >
-              <Text style={styles.actionText}>UPDATE ETD</Text>
-            </TouchableOpacity>
+          <View className="flex-row">
+            <View style={styles.actionRow}>
+              <TouchableOpacity
+                disabled={etdStatus === "sent"}
+                style={[
+                  styles.actionButton,
+                  styles.buttonPending, // tetap warna pending
+                  etdStatus === "sent" && { opacity: 0.6 },
+                ]}
+                onPress={handleETD}
+              >
+                <Text style={styles.actionText}>UPDATE ETD</Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              disabled={etaStatus === "sent"}
-              style={[
-                styles.actionButton,
-                etaStatus === "sent" ? styles.buttonSent : styles.buttonPending,
-              ]}
-              onPress={handleUpdateEta}
-            >
-              <Text style={styles.actionText}>UPDATE ETA</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                disabled={etaStatus === "sent"}
+                style={[
+                  styles.actionButton,
+                  styles.buttonPending,
+                  etaStatus === "sent" && { opacity: 0.6 },
+                ]}
+                onPress={handleETA}
+              >
+                <Text style={styles.actionText}>UPDATE ETA</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </ScrollView>
 
       {/* DESTINATION DROPDOWN */}
-      <Modal transparent visible={dropdownVisible} animationType="fade">
+      <Modal transparent visible={dropdownVisible}>
         <TouchableWithoutFeedback onPress={() => setDropdownVisible(false)}>
           <View style={styles.modalBackdrop} />
         </TouchableWithoutFeedback>
@@ -418,7 +413,7 @@ export default function ForwardScreen() {
         </View>
       </Modal>
 
-      {/* BOTTOM NAV */}
+      {/* LOGOUT */}
       <View style={styles.bottomContainer}>
         <View style={styles.bottomRow}>
           <View style={[styles.bottomButton, styles.bottomActive]}>
@@ -426,7 +421,7 @@ export default function ForwardScreen() {
             <Text style={styles.bottomActiveText}>Home</Text>
           </View>
 
-          <TouchableOpacity style={styles.bottomButton} onPress={handleLogout}>
+          <TouchableOpacity style={styles.bottomButton} onPress={logout}>
             <Ionicons name="log-out-outline" size={30} color="#4b5563" />
             <Text style={styles.bottomText}>Logout</Text>
           </TouchableOpacity>

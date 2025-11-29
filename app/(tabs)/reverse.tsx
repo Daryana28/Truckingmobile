@@ -1,17 +1,15 @@
-// app/%28tabs%29/reverse.tsx
+// app/(tabs)/reverse.tsx
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
-  Modal,
   Pressable,
   ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
 } from "react-native";
 
@@ -21,32 +19,23 @@ import styles from "../style/homeStyles";
 export default function ReverseScreen() {
   const destinations = [
     "Select Destinasi",
-    "Yamaha PG Lokal PO 1",
-    "Yamaha PG Lokal PO 2",
-    "Yamaha PG Lokal PO 3",
-    "Yamaha PG export cycle 1",
-    "Yamaha PG export cycle 2",
-    "Yamaha Karawang PO 1",
-    "Yamaha Karawang PO 2",
-    "Yamaha Karawang PO 3",
+    "YIMM PG LOKAL PO 1",
+    "YIMM PG LOKAL PO 2",
+    "YIMM PG LOKAL PO 3",
   ];
 
   const [plateNumber, setPlateNumber] = useState("");
-  const [plateStatus, setPlateStatus] = useState<"pending" | "sent">("pending");
   const [etdStatus, setEtdStatus] = useState<"pending" | "sent">("pending");
   const [etaStatus, setEtaStatus] = useState<"pending" | "sent">("pending");
-
   const [destinationIndex, setDestinationIndex] = useState(0);
-  const [dropdownVisible, setDropdownVisible] = useState(false);
   const [userName, setUserName] = useState("");
 
   const FORM_KEY = "reverse_form";
   const STATUS_KEY = "status_reverse";
-  const STATUS_KEY_FORWARD = "status_forward";
 
-  // ================================
-  // INIT LOAD
-  // ================================
+  // ============================================
+  // LOAD DATA AWAL
+  // ============================================
   useEffect(() => {
     loadUser();
     loadStatus();
@@ -54,72 +43,59 @@ export default function ReverseScreen() {
   }, []);
 
   async function loadUser() {
-    try {
-      const stored = await AsyncStorage.getItem("user");
-      if (!stored) return;
+    const stored = await AsyncStorage.getItem("user");
+    if (!stored) return;
 
-      const parsed = JSON.parse(stored);
-      setUserName(parsed?.name || "");
-    } catch {}
+    const parsed = JSON.parse(stored);
+    setUserName(parsed?.name || "");
   }
 
   async function loadStatus() {
-    try {
-      const stored = await AsyncStorage.getItem(STATUS_KEY);
-      if (!stored) return;
+    const stored = await AsyncStorage.getItem(STATUS_KEY);
+    if (!stored) return;
 
-      const parsed = JSON.parse(stored);
-      if (parsed?.plate) setPlateStatus(parsed.plate);
-      if (parsed?.etd) setEtdStatus(parsed.etd);
-      if (parsed?.eta) setEtaStatus(parsed.eta);
-    } catch {}
+    const parsed = JSON.parse(stored);
+    if (parsed?.etd) setEtdStatus(parsed.etd);
+    if (parsed?.eta) setEtaStatus(parsed.eta);
   }
 
   async function loadFormData() {
-    try {
-      const stored = await AsyncStorage.getItem(FORM_KEY);
-      if (!stored) return;
+    const stored = await AsyncStorage.getItem(FORM_KEY);
+    if (!stored) return;
 
-      const parsed = JSON.parse(stored);
-
-      if (parsed?.plateNumber) setPlateNumber(parsed.plateNumber);
-      if (parsed?.destinationIndex >= 0)
-        setDestinationIndex(parsed.destinationIndex);
-    } catch {}
+    const parsed = JSON.parse(stored);
+    if (parsed?.plateNumber) setPlateNumber(parsed.plateNumber);
+    if (parsed?.destinationIndex >= 0)
+      setDestinationIndex(parsed.destinationIndex);
   }
 
-  // Auto save Nopol & Destination
+  // auto save
   useEffect(() => {
     AsyncStorage.setItem(
       FORM_KEY,
-      JSON.stringify({ plateNumber, destinationIndex })
+      JSON.stringify({
+        plateNumber,
+        destinationIndex,
+      })
     );
   }, [plateNumber, destinationIndex]);
 
-  function persistStatus(next: {
-    plate?: "pending" | "sent";
-    etd?: "pending" | "sent";
-    eta?: "pending" | "sent";
-  }) {
-    const combined = {
-      plate: next.plate ?? plateStatus,
+  function persistStatus(next: { etd?: string; eta?: string }) {
+    const data = {
       etd: next.etd ?? etdStatus,
       eta: next.eta ?? etaStatus,
     };
-    AsyncStorage.setItem(STATUS_KEY, JSON.stringify(combined));
+
+    AsyncStorage.setItem(STATUS_KEY, JSON.stringify(data));
   }
 
-  // ================================
-  // SEND STATUS API
-  // ================================
-  async function sendStatus(payload: any) {
+  // ============================================
+  // API SEND
+  // ============================================
+  async function sendStatus(body: any) {
     try {
       const token = await AsyncStorage.getItem("token");
-
-      if (!token) {
-        Alert.alert("Belum login", "Silakan login ulang.");
-        return false;
-      }
+      if (!token) return false;
 
       const res = await fetch(`${API_BASE}/api/status/update`, {
         method: "POST",
@@ -129,130 +105,86 @@ export default function ReverseScreen() {
         },
         body: JSON.stringify({
           direction: "reverse",
-          ...payload,
+          origin:
+            destinationIndex === 0 ? null : destinations[destinationIndex],
+          destination: "PT Indonesia Koito",
+          ...body,
         }),
       });
 
-      if (!res.ok) {
-        const msg = await res.text();
-        throw new Error(`Status ${res.status}: ${msg}`);
-      }
-
-      return true;
-    } catch (e) {
-      Alert.alert("Gagal kirim status", e instanceof Error ? e.message : "");
+      return res.ok;
+    } catch {
       return false;
     }
   }
 
-  function getNowTime() {
-    const now = new Date();
-    return `${String(now.getHours()).padStart(2, "0")}:${String(
-      now.getMinutes()
+  function now() {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, "0")}:${String(
+      d.getMinutes()
     ).padStart(2, "0")}`;
   }
 
-  function getPlanTimes() {
-    const key = destinations[destinationIndex];
-    switch (key) {
-      case "Yamaha PG Lokal PO 1":
-      case "Yamaha PG export cycle 1":
-      case "Yamaha Karawang PO 1":
-        return { etd: "05:00", eta: "08:00" };
-      case "Yamaha PG Lokal PO 2":
-      case "Yamaha Karawang PO 2":
-        return { etd: "08:00", eta: "13:00" };
-      case "Yamaha PG Lokal PO 3":
-      case "Yamaha PG export cycle 2":
-      case "Yamaha Karawang PO 3":
-        return { etd: "14:00", eta: "19:00" };
-      default:
-        return { etd: "-", eta: "-" };
-    }
-  }
-
-  // ================================
-  // ACTION HANDLERS (One-click only)
-  // ================================
-  async function handlePlateSubmit() {
-    if (!plateNumber.trim())
-      return Alert.alert("Nopol kosong", "Isi nomor polisi");
-
-    if (plateStatus === "sent") return; // prevent double-tap
-
-    const ok = await sendStatus({
-      plate: plateNumber,
-      destination: destinations[destinationIndex],
-    });
-    if (!ok) return;
-
-    setPlateStatus("sent");
-    persistStatus({ plate: "sent" });
-    Alert.alert("Nopol terkirim");
-  }
-
+  // ============================================
+  // HANDLERS
+  // ============================================
   async function handleUpdateEtd() {
-    if (etdStatus === "sent") return;
+    if (destinationIndex === 0)
+      return Alert.alert("Destinasi kosong", "Isi destinasi di Forward.");
 
-    const time = getNowTime();
-    const ok = await sendStatus({
-      etdTime: time,
-      destination: destinations[destinationIndex],
-    });
+    const t = now();
+    const ok = await sendStatus({ etdTime: t });
     if (!ok) return;
 
     setEtdStatus("sent");
     persistStatus({ etd: "sent" });
-    Alert.alert("ETD dikirim", time);
+
+    Alert.alert("ETD Reverse terkirim", t);
   }
 
   async function handleUpdateEta() {
-    if (etaStatus === "sent") return;
+    if (destinationIndex === 0)
+      return Alert.alert("Destinasi kosong", "Isi destinasi di Forward.");
 
-    const time = getNowTime();
-    const ok = await sendStatus({
-      etaTime: time,
-      destination: destinations[destinationIndex],
-    });
+    const t = now();
+    const ok = await sendStatus({ etaTime: t });
     if (!ok) return;
 
     setEtaStatus("sent");
     persistStatus({ eta: "sent" });
-    Alert.alert("ETA dikirim", time);
+
+    Alert.alert("ETA Reverse terkirim", t);
   }
 
   async function handleLogout() {
-    await Promise.all([
-      AsyncStorage.removeItem("user"),
-      AsyncStorage.removeItem("token"),
-      AsyncStorage.removeItem(FORM_KEY),
-      AsyncStorage.removeItem(STATUS_KEY),
-      AsyncStorage.removeItem(STATUS_KEY_FORWARD),
+    await AsyncStorage.multiRemove([
+      "user",
+      "token",
+      "forward_form",
+      "status_forward",
+      "reverse_form",
+      "status_reverse",
     ]);
 
     router.replace("/login");
   }
 
-  // ================================
+  // ============================================
   // UI
-  // ================================
+  // ============================================
   return (
     <View style={styles.screen}>
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
-        scrollEnabled={false}
       >
-        {/* HEADER */}
         <View style={styles.header}>
-          <Text style={styles.hello}>{`Hello, ${userName}`}</Text>
-          <Text style={styles.subtitle}>Your deliveries for today:</Text>
+          <Text style={styles.hello}>Hello, {userName}</Text>
         </View>
 
-        {/* CARD MAIN */}
+        {/* ================= MAIN CARD ================= */}
         <View style={styles.card}>
-          {/* ICON ROW */}
           <View style={styles.iconRow}>
             <Pressable
               onPress={() => router.replace("/(tabs)/forward")}
@@ -275,14 +207,19 @@ export default function ReverseScreen() {
             </View>
           </View>
 
-          {/* FROM = Destinasi */}
+          {/* FROM */}
           <View style={styles.row}>
             <Text style={styles.label}>From</Text>
             <Text style={styles.colon}>:</Text>
 
             <Pressable
               style={styles.select}
-              onPress={() => setDropdownVisible(true)}
+              onPress={() => {
+                Alert.alert(
+                  "Pengaturan Forward",
+                  "Destinasi diatur di Forward"
+                );
+              }}
             >
               <Text style={styles.selectText}>
                 {destinations[destinationIndex]}
@@ -296,31 +233,14 @@ export default function ReverseScreen() {
             <Text style={styles.label}>Nopol</Text>
             <Text style={styles.colon}>:</Text>
 
-            <View style={styles.inputRow}>
-              <TextInput
-                style={styles.input}
-                placeholder="Masukkan nomor polisi"
-                placeholderTextColor="#94a3b8"
-                value={plateNumber}
-                onChangeText={setPlateNumber}
-              />
-
-              <TouchableOpacity
-                disabled={plateStatus === "sent"}
-                style={[
-                  styles.okButton,
-                  plateStatus === "sent"
-                    ? styles.buttonSent
-                    : styles.buttonPending,
-                ]}
-                onPress={handlePlateSubmit}
-              >
-                <Text style={styles.okButtonText}>OK</Text>
-              </TouchableOpacity>
-            </View>
+            <TextInput
+              style={styles.input}
+              value={plateNumber}
+              editable={false}
+            />
           </View>
 
-          {/* TO = Fix destination */}
+          {/* TO */}
           <View style={styles.row}>
             <Text style={styles.label}>To</Text>
             <Text style={styles.colon}>:</Text>
@@ -328,32 +248,21 @@ export default function ReverseScreen() {
           </View>
         </View>
 
-        {/* CARD PLAN */}
+        {/* ================= SECOND CARD ================= */}
         <View style={styles.card}>
           <Text style={styles.statusValue}>
             {destinationIndex === 0
-              ? "No data"
+              ? "No destination"
               : destinations[destinationIndex]}
           </Text>
-
-          <View style={styles.timeRow}>
-            <Text style={styles.timeLabel}>ETD (Plan)</Text>
-            <Text style={styles.timeColon}>:</Text>
-            <Text style={styles.timeValue}>{getPlanTimes().etd}</Text>
-          </View>
-
-          <View style={styles.timeRow}>
-            <Text style={styles.timeLabel}>ETA (Plan)</Text>
-            <Text style={styles.timeColon}>:</Text>
-            <Text style={styles.timeValue}>{getPlanTimes().eta}</Text>
-          </View>
 
           <View style={styles.actionRow}>
             <TouchableOpacity
               disabled={etdStatus === "sent"}
               style={[
                 styles.actionButton,
-                etdStatus === "sent" ? styles.buttonSent : styles.buttonPending,
+                styles.buttonPending,
+                etdStatus === "sent" && { opacity: 0.6 },
               ]}
               onPress={handleUpdateEtd}
             >
@@ -364,7 +273,8 @@ export default function ReverseScreen() {
               disabled={etaStatus === "sent"}
               style={[
                 styles.actionButton,
-                etaStatus === "sent" ? styles.buttonSent : styles.buttonPending,
+                styles.buttonPending,
+                etaStatus === "sent" && { opacity: 0.6 },
               ]}
               onPress={handleUpdateEta}
             >
@@ -374,29 +284,7 @@ export default function ReverseScreen() {
         </View>
       </ScrollView>
 
-      {/* DROPDOWN DESTINATION */}
-      <Modal transparent visible={dropdownVisible} animationType="fade">
-        <TouchableWithoutFeedback onPress={() => setDropdownVisible(false)}>
-          <View style={styles.modalBackdrop} />
-        </TouchableWithoutFeedback>
-
-        <View style={styles.modalContent}>
-          {destinations.map((item, idx) => (
-            <TouchableOpacity
-              key={idx}
-              style={styles.optionRow}
-              onPress={() => {
-                setDestinationIndex(idx);
-                setDropdownVisible(false);
-              }}
-            >
-              <Text style={styles.optionText}>{item}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </Modal>
-
-      {/* BOTTOM MENU */}
+      {/* BOTTOM */}
       <View style={styles.bottomContainer}>
         <View style={styles.bottomRow}>
           <View style={[styles.bottomButton, styles.bottomActive]}>
