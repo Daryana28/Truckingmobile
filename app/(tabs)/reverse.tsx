@@ -1,3 +1,4 @@
+// app/%28tabs%29/reverse.tsx
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
@@ -13,6 +14,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
+
 import { API_BASE } from "../../src/api";
 import styles from "../style/homeStyles";
 
@@ -38,37 +40,61 @@ export default function ReverseScreen() {
   const [dropdownVisible, setDropdownVisible] = useState(false);
   const [userName, setUserName] = useState("");
 
+  const FORM_KEY = "reverse_form";
   const STATUS_KEY = "status_reverse";
   const STATUS_KEY_FORWARD = "status_forward";
 
+  // ================================
+  // INIT LOAD
+  // ================================
   useEffect(() => {
     loadUser();
     loadStatus();
+    loadFormData();
   }, []);
 
   async function loadUser() {
     try {
       const stored = await AsyncStorage.getItem("user");
       if (!stored) return;
+
       const parsed = JSON.parse(stored);
       setUserName(parsed?.name || "");
-    } catch (err) {
-      console.error("Failed load user:", err);
-    }
+    } catch {}
   }
 
   async function loadStatus() {
     try {
       const stored = await AsyncStorage.getItem(STATUS_KEY);
       if (!stored) return;
+
       const parsed = JSON.parse(stored);
       if (parsed?.plate) setPlateStatus(parsed.plate);
       if (parsed?.etd) setEtdStatus(parsed.etd);
       if (parsed?.eta) setEtaStatus(parsed.eta);
-    } catch (err) {
-      console.error("Failed load status:", err);
-    }
+    } catch {}
   }
+
+  async function loadFormData() {
+    try {
+      const stored = await AsyncStorage.getItem(FORM_KEY);
+      if (!stored) return;
+
+      const parsed = JSON.parse(stored);
+
+      if (parsed?.plateNumber) setPlateNumber(parsed.plateNumber);
+      if (parsed?.destinationIndex >= 0)
+        setDestinationIndex(parsed.destinationIndex);
+    } catch {}
+  }
+
+  // Auto save Nopol & Destination
+  useEffect(() => {
+    AsyncStorage.setItem(
+      FORM_KEY,
+      JSON.stringify({ plateNumber, destinationIndex })
+    );
+  }, [plateNumber, destinationIndex]);
 
   function persistStatus(next: {
     plate?: "pending" | "sent";
@@ -80,15 +106,16 @@ export default function ReverseScreen() {
       etd: next.etd ?? etdStatus,
       eta: next.eta ?? etaStatus,
     };
-    AsyncStorage.setItem(STATUS_KEY, JSON.stringify(combined)).catch(() => {});
+    AsyncStorage.setItem(STATUS_KEY, JSON.stringify(combined));
   }
 
   // ================================
-  // 🔥 FIXED: SEND STATUS WITH TOKEN
+  // SEND STATUS API
   // ================================
   async function sendStatus(payload: any) {
     try {
       const token = await AsyncStorage.getItem("token");
+
       if (!token) {
         Alert.alert("Belum login", "Silakan login ulang.");
         return false;
@@ -98,7 +125,7 @@ export default function ReverseScreen() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`, // FIX TERPENTING
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           direction: "reverse",
@@ -108,16 +135,12 @@ export default function ReverseScreen() {
 
       if (!res.ok) {
         const msg = await res.text();
-        throw new Error(`Status ${res.status}: ${msg || "unknown error"}`);
+        throw new Error(`Status ${res.status}: ${msg}`);
       }
 
       return true;
     } catch (e) {
-      console.error("sendStatus reverse error", e);
-      Alert.alert(
-        "Gagal kirim status",
-        e instanceof Error ? e.message : undefined
-      );
+      Alert.alert("Gagal kirim status", e instanceof Error ? e.message : "");
       return false;
     }
   }
@@ -136,24 +159,26 @@ export default function ReverseScreen() {
       case "Yamaha PG export cycle 1":
       case "Yamaha Karawang PO 1":
         return { etd: "05:00", eta: "08:00" };
-
       case "Yamaha PG Lokal PO 2":
       case "Yamaha Karawang PO 2":
         return { etd: "08:00", eta: "13:00" };
-
       case "Yamaha PG Lokal PO 3":
       case "Yamaha PG export cycle 2":
       case "Yamaha Karawang PO 3":
         return { etd: "14:00", eta: "19:00" };
-
       default:
         return { etd: "-", eta: "-" };
     }
   }
 
+  // ================================
+  // ACTION HANDLERS (One-click only)
+  // ================================
   async function handlePlateSubmit() {
     if (!plateNumber.trim())
       return Alert.alert("Nopol kosong", "Isi nomor polisi");
+
+    if (plateStatus === "sent") return; // prevent double-tap
 
     const ok = await sendStatus({
       plate: plateNumber,
@@ -163,10 +188,12 @@ export default function ReverseScreen() {
 
     setPlateStatus("sent");
     persistStatus({ plate: "sent" });
-    Alert.alert("Nopol Terkirim");
+    Alert.alert("Nopol terkirim");
   }
 
   async function handleUpdateEtd() {
+    if (etdStatus === "sent") return;
+
     const time = getNowTime();
     const ok = await sendStatus({
       etdTime: time,
@@ -180,6 +207,8 @@ export default function ReverseScreen() {
   }
 
   async function handleUpdateEta() {
+    if (etaStatus === "sent") return;
+
     const time = getNowTime();
     const ok = await sendStatus({
       etaTime: time,
@@ -196,6 +225,7 @@ export default function ReverseScreen() {
     await Promise.all([
       AsyncStorage.removeItem("user"),
       AsyncStorage.removeItem("token"),
+      AsyncStorage.removeItem(FORM_KEY),
       AsyncStorage.removeItem(STATUS_KEY),
       AsyncStorage.removeItem(STATUS_KEY_FORWARD),
     ]);
@@ -203,6 +233,9 @@ export default function ReverseScreen() {
     router.replace("/login");
   }
 
+  // ================================
+  // UI
+  // ================================
   return (
     <View style={styles.screen}>
       <ScrollView
@@ -217,9 +250,9 @@ export default function ReverseScreen() {
           <Text style={styles.subtitle}>Your deliveries for today:</Text>
         </View>
 
-        {/* CARD */}
+        {/* CARD MAIN */}
         <View style={styles.card}>
-          {/* ICON */}
+          {/* ICON ROW */}
           <View style={styles.iconRow}>
             <Pressable
               onPress={() => router.replace("/(tabs)/forward")}
@@ -242,7 +275,7 @@ export default function ReverseScreen() {
             </View>
           </View>
 
-          {/* FROM (Reverse) */}
+          {/* FROM = Destinasi */}
           <View style={styles.row}>
             <Text style={styles.label}>From</Text>
             <Text style={styles.colon}>:</Text>
@@ -273,6 +306,7 @@ export default function ReverseScreen() {
               />
 
               <TouchableOpacity
+                disabled={plateStatus === "sent"}
                 style={[
                   styles.okButton,
                   plateStatus === "sent"
@@ -286,7 +320,7 @@ export default function ReverseScreen() {
             </View>
           </View>
 
-          {/* TO */}
+          {/* TO = Fix destination */}
           <View style={styles.row}>
             <Text style={styles.label}>To</Text>
             <Text style={styles.colon}>:</Text>
@@ -294,7 +328,7 @@ export default function ReverseScreen() {
           </View>
         </View>
 
-        {/* PLAN CARD */}
+        {/* CARD PLAN */}
         <View style={styles.card}>
           <Text style={styles.statusValue}>
             {destinationIndex === 0
@@ -316,6 +350,7 @@ export default function ReverseScreen() {
 
           <View style={styles.actionRow}>
             <TouchableOpacity
+              disabled={etdStatus === "sent"}
               style={[
                 styles.actionButton,
                 etdStatus === "sent" ? styles.buttonSent : styles.buttonPending,
@@ -326,6 +361,7 @@ export default function ReverseScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
+              disabled={etaStatus === "sent"}
               style={[
                 styles.actionButton,
                 etaStatus === "sent" ? styles.buttonSent : styles.buttonPending,
@@ -338,7 +374,7 @@ export default function ReverseScreen() {
         </View>
       </ScrollView>
 
-      {/* DROPDOWN */}
+      {/* DROPDOWN DESTINATION */}
       <Modal transparent visible={dropdownVisible} animationType="fade">
         <TouchableWithoutFeedback onPress={() => setDropdownVisible(false)}>
           <View style={styles.modalBackdrop} />

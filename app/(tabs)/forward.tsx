@@ -1,3 +1,4 @@
+// app/(tabs)/forward.tsx
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
@@ -30,6 +31,7 @@ export default function ForwardScreen() {
     "Yamaha Karawang PO 3",
   ];
 
+  // STATE
   const [plateNumber, setPlateNumber] = useState("");
   const [plateStatus, setPlateStatus] = useState<"pending" | "sent">("pending");
   const [etdStatus, setEtdStatus] = useState<"pending" | "sent">("pending");
@@ -39,40 +41,39 @@ export default function ForwardScreen() {
   const [dropdownVisible, setDropdownVisible] = useState(false);
   const [userName, setUserName] = useState("");
 
+  // STORAGE KEYS
+  const FORM_KEY = "forward_form";
   const STATUS_KEY = "status_forward";
   const STATUS_KEY_REVERSE = "status_reverse";
 
+  // ============================
+  // AUTO LOGIN CHECK
+  // ============================
   useEffect(() => {
     let mounted = true;
 
     async function ensureLoggedIn() {
-      try {
-        const [token, user] = await Promise.all([
-          AsyncStorage.getItem("token"),
-          AsyncStorage.getItem("user"),
-        ]);
+      const token = await AsyncStorage.getItem("token");
+      const user = await AsyncStorage.getItem("user");
 
-        if (!mounted) return;
+      if (!mounted) return;
 
-        if (!token || !user) {
-          router.replace("/login");
-        }
-      } catch (err) {
-        console.error("Failed auth check:", err);
-        if (mounted) router.replace("/login");
-      }
+      if (!token || !user) router.replace("/login");
     }
 
     ensureLoggedIn();
-
     return () => {
       mounted = false;
     };
   }, []);
 
+  // ============================
+  // LOAD SAVED DATA
+  // ============================
   useEffect(() => {
     loadUser();
     loadStatus();
+    loadFormData();
   }, []);
 
   async function loadUser() {
@@ -81,9 +82,7 @@ export default function ForwardScreen() {
       if (!stored) return;
       const parsed = JSON.parse(stored);
       setUserName(parsed?.name || "");
-    } catch (err) {
-      console.error("Failed load user:", err);
-    }
+    } catch {}
   }
 
   async function loadStatus() {
@@ -91,13 +90,36 @@ export default function ForwardScreen() {
       const stored = await AsyncStorage.getItem(STATUS_KEY);
       if (!stored) return;
       const parsed = JSON.parse(stored);
-      if (parsed?.plate) setPlateStatus(parsed.plate);
-      if (parsed?.etd) setEtdStatus(parsed.etd);
-      if (parsed?.eta) setEtaStatus(parsed.eta);
-    } catch (err) {
-      console.error("Failed load status:", err);
-    }
+
+      setPlateStatus(parsed?.plate || "pending");
+      setEtdStatus(parsed?.etd || "pending");
+      setEtaStatus(parsed?.eta || "pending");
+    } catch {}
   }
+
+  async function loadFormData() {
+    try {
+      const stored = await AsyncStorage.getItem(FORM_KEY);
+      if (!stored) return;
+
+      const parsed = JSON.parse(stored);
+
+      if (parsed?.plateNumber) setPlateNumber(parsed.plateNumber);
+      if (parsed?.destinationIndex >= 0)
+        setDestinationIndex(parsed.destinationIndex);
+    } catch {}
+  }
+
+  // AUTO-SAVE plate + destination
+  useEffect(() => {
+    AsyncStorage.setItem(
+      FORM_KEY,
+      JSON.stringify({
+        plateNumber,
+        destinationIndex,
+      })
+    );
+  }, [plateNumber, destinationIndex]);
 
   function persistStatus(next: {
     plate?: "pending" | "sent";
@@ -109,16 +131,15 @@ export default function ForwardScreen() {
       etd: next.etd ?? etdStatus,
       eta: next.eta ?? etaStatus,
     };
-    AsyncStorage.setItem(STATUS_KEY, JSON.stringify(combined)).catch(() => {});
+    AsyncStorage.setItem(STATUS_KEY, JSON.stringify(combined));
   }
 
-  // ================================
-  // 🔥 FIX: SEND STATUS WITH JWT TOKEN
-  // ================================
+  // ============================
+  // SEND STATUS TO API
+  // ============================
   async function sendStatus(payload: any) {
     try {
       const token = await AsyncStorage.getItem("token");
-
       if (!token) {
         Alert.alert("Belum login", "Silakan login ulang.");
         return false;
@@ -128,7 +149,7 @@ export default function ForwardScreen() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`, // FIX TERPENTING
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           direction: "forward",
@@ -138,17 +159,12 @@ export default function ForwardScreen() {
 
       if (!res.ok) {
         const msg = await res.text();
-        throw new Error(`Status ${res.status}: ${msg || "unknown error"}`);
+        throw new Error(`Status ${res.status}: ${msg}`);
       }
 
       return true;
     } catch (e) {
-      console.error("sendStatus forward error", e);
-      Alert.alert(
-        "Gagal kirim status",
-        e instanceof Error ? e.message : undefined
-      );
-
+      Alert.alert("Gagal kirim status", e instanceof Error ? e.message : "");
       return false;
     }
   }
@@ -167,21 +183,21 @@ export default function ForwardScreen() {
       case "Yamaha PG export cycle 1":
       case "Yamaha Karawang PO 1":
         return { etd: "05:00", eta: "08:00" };
-
       case "Yamaha PG Lokal PO 2":
       case "Yamaha Karawang PO 2":
         return { etd: "08:00", eta: "13:00" };
-
       case "Yamaha PG Lokal PO 3":
       case "Yamaha PG export cycle 2":
       case "Yamaha Karawang PO 3":
         return { etd: "14:00", eta: "19:00" };
-
       default:
         return { etd: "-", eta: "-" };
     }
   }
 
+  // ============================
+  // ACTION HANDLERS
+  // ============================
   async function handlePlateSubmit() {
     if (!plateNumber.trim())
       return Alert.alert("Nopol kosong", "Isi nomor polisi");
@@ -228,17 +244,21 @@ export default function ForwardScreen() {
     Alert.alert("ETA dikirim", time);
   }
 
+  // ============================
+  // LOGOUT (tidak reset data)
+  // ============================
   async function handleLogout() {
-    await Promise.all([
-      AsyncStorage.removeItem("user"),
-      AsyncStorage.removeItem("token"),
-      AsyncStorage.removeItem(STATUS_KEY),
-      AsyncStorage.removeItem(STATUS_KEY_REVERSE),
-    ]);
+    await AsyncStorage.removeItem("user");
+    await AsyncStorage.removeItem("token");
+
+    // ⚠ Data ETD/ETA/Nopol/Status TIDAK DIHAPUS
 
     router.replace("/login");
   }
 
+  // ============================
+  // UI RENDER
+  // ============================
   return (
     <View style={styles.screen}>
       <ScrollView
@@ -253,7 +273,7 @@ export default function ForwardScreen() {
           <Text style={styles.subtitle}>Your deliveries for today:</Text>
         </View>
 
-        {/* CARD */}
+        {/* MAIN CARD */}
         <View style={styles.card}>
           <View style={styles.iconRow}>
             <View style={[styles.iconWrap, styles.iconWrapActive]}>
@@ -299,6 +319,7 @@ export default function ForwardScreen() {
               />
 
               <TouchableOpacity
+                disabled={plateStatus === "sent"}
                 style={[
                   styles.okButton,
                   plateStatus === "sent"
@@ -312,7 +333,7 @@ export default function ForwardScreen() {
             </View>
           </View>
 
-          {/* TO */}
+          {/* DESTINATION */}
           <View style={styles.row}>
             <Text style={styles.label}>To</Text>
             <Text style={styles.colon}>:</Text>
@@ -351,6 +372,7 @@ export default function ForwardScreen() {
 
           <View style={styles.actionRow}>
             <TouchableOpacity
+              disabled={etdStatus === "sent"}
               style={[
                 styles.actionButton,
                 etdStatus === "sent" ? styles.buttonSent : styles.buttonPending,
@@ -361,6 +383,7 @@ export default function ForwardScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
+              disabled={etaStatus === "sent"}
               style={[
                 styles.actionButton,
                 etaStatus === "sent" ? styles.buttonSent : styles.buttonPending,
@@ -373,7 +396,7 @@ export default function ForwardScreen() {
         </View>
       </ScrollView>
 
-      {/* DROPDOWN */}
+      {/* DESTINATION DROPDOWN */}
       <Modal transparent visible={dropdownVisible} animationType="fade">
         <TouchableWithoutFeedback onPress={() => setDropdownVisible(false)}>
           <View style={styles.modalBackdrop} />
@@ -395,7 +418,7 @@ export default function ForwardScreen() {
         </View>
       </Modal>
 
-      {/* BOTTOM MENU */}
+      {/* BOTTOM NAV */}
       <View style={styles.bottomContainer}>
         <View style={styles.bottomRow}>
           <View style={[styles.bottomButton, styles.bottomActive]}>
