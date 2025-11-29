@@ -14,11 +14,13 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import Svg, { Path } from "react-native-svg"; // SVG Eye Icon
 import { API_BASE } from "../src/api/index";
 
 export default function Login() {
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [locationPrompt, setLocationPrompt] = useState(false);
   const [pendingUser, setPendingUser] = useState<any>(null);
 
@@ -60,15 +62,63 @@ export default function Login() {
     }
   }
 
+  // SVG Eye icon
+  const EyeIcon = ({ open = false }) => (
+    <Svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+      {open ? (
+        <>
+          <Path
+            d="M17.94 17.94L6.06 6.06"
+            stroke="#888"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+          <Path
+            d="M10.58 10.58A3 3 0 0113.42 13.42"
+            stroke="#888"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+          <Path
+            d="M6.7 6.7C3.9 8.3 2 12 2 12s3 7 10 7c2.1 0 3.9-.6 5.4-1.5"
+            stroke="#888"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+          <Path
+            d="M12 5c3.9 0 7.3 2.1 9 4.5"
+            stroke="#888"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+        </>
+      ) : (
+        <>
+          <Path
+            d="M12 5C5 5 2 12 2 12s3 7 10 7 10-7 10-7-3-7-10-7z"
+            stroke="#888"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+          <Path
+            d="M12 15a3 3 0 100-6 3 3 0 000 6z"
+            stroke="#888"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+        </>
+      )}
+    </Svg>
+  );
+
   return (
     <View style={styles.screenWrapper}>
-      {/* ⭐ Tetap center sebelum keyboard muncul */}
       <KeyboardAvoidingView
         style={styles.inner}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={Platform.OS === "ios" ? 20 : 0}
       >
-        {/* HERO - tidak bergerak saat keyboard muncul */}
+        {/* HERO */}
         <View style={styles.heroWrapper}>
           <Image
             source={require("../assets/images/hero.png")}
@@ -77,7 +127,7 @@ export default function Login() {
           />
         </View>
 
-        {/* FORM - hanya bagian ini yang naik */}
+        {/* FORM */}
         <View style={styles.formWrapper}>
           <Text style={styles.title}>
             Welcome to{" "}
@@ -88,6 +138,7 @@ export default function Login() {
             Your go-to app for real-time trucking and logistics tracking.
           </Text>
 
+          {/* NAMA */}
           <TextInput
             placeholder="Nama Lengkap"
             placeholderTextColor="#888"
@@ -96,19 +147,31 @@ export default function Login() {
             style={styles.input}
           />
 
-          <TextInput
-            placeholder="Password"
-            placeholderTextColor="#888"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-            style={styles.input}
-          />
+          {/* PASSWORD */}
+          <View style={styles.passwordWrapper}>
+            <TextInput
+              placeholder="Password"
+              placeholderTextColor="#888"
+              secureTextEntry={!showPassword}
+              value={password}
+              onChangeText={setPassword}
+              style={[styles.input, { paddingRight: 50 }]}
+            />
 
+            <TouchableOpacity
+              style={styles.eyeButton}
+              onPress={() => setShowPassword(!showPassword)}
+            >
+              <EyeIcon open={showPassword} />
+            </TouchableOpacity>
+          </View>
+
+          {/* LOGIN BUTTON */}
           <TouchableOpacity style={styles.loginBtn} onPress={handleLogin}>
             <Text style={styles.loginText}>Log in</Text>
           </TouchableOpacity>
 
+          {/* TERMS */}
           <Text style={styles.terms}>
             By logging in, you agree to our{" "}
             <Text style={styles.link}>Terms of service</Text> and{" "}
@@ -117,7 +180,7 @@ export default function Login() {
         </View>
       </KeyboardAvoidingView>
 
-      {/* Modal Izin Lokasi */}
+      {/* MODAL IZIN LOKASI */}
       {locationPrompt && (
         <View style={styles.modalWrapper}>
           <View style={styles.modal}>
@@ -125,12 +188,7 @@ export default function Login() {
               source={{
                 uri: "https://img.icons8.com/?size=100&id=13800&format=png&color=e8532a",
               }}
-              style={{
-                width: 50,
-                height: 50,
-                alignSelf: "center",
-                marginBottom: 10,
-              }}
+              style={styles.modalIcon}
               resizeMode="contain"
             />
 
@@ -152,12 +210,11 @@ export default function Login() {
               <Text style={styles.modalBtnText}>Izinkan & Lanjutkan</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={() => setLocationPrompt(false)}>
-              <Text
-                style={{ color: "#e8532a", textAlign: "center", marginTop: 10 }}
-              >
-                Batal
-              </Text>
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => setLocationPrompt(false)}
+            >
+              <Text style={styles.cancelBtnText}>Batal</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -166,13 +223,13 @@ export default function Login() {
   );
 }
 
-const styles = StyleSheet.create({
-  screenWrapper: {
-    flex: 1,
-    backgroundColor: "white",
-  },
+/* ============================= */
+/*            STYLES             */
+/* ============================= */
 
-  // ⭐ seluruh halaman tetap center sebelum keyboard muncul
+const styles = StyleSheet.create({
+  screenWrapper: { flex: 1, backgroundColor: "white" },
+
   inner: {
     flex: 1,
     justifyContent: "center",
@@ -187,22 +244,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  hero: {
-    width: "100%",
-    height: "100%",
-  },
+  hero: { width: "100%", height: "100%" },
 
-  formWrapper: {
-    width: "100%",
-    alignItems: "center",
-    marginTop: 10,
-  },
+  formWrapper: { width: "100%", alignItems: "center", marginTop: 10 },
 
-  title: {
-    fontSize: 22,
-    fontWeight: "bold",
-    textAlign: "center",
-  },
+  title: { fontSize: 22, fontWeight: "bold", textAlign: "center" },
 
   subtitle: {
     textAlign: "center",
@@ -223,6 +269,20 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 16,
     color: "#333",
+  },
+
+  passwordWrapper: {
+    width: "100%",
+    marginTop: 10,
+    position: "relative",
+  },
+
+  eyeButton: {
+    position: "absolute",
+    right: 16,
+    top: "50%",
+    transform: [{ translateY: -12 }],
+    padding: 4,
   },
 
   loginBtn: {
@@ -248,10 +308,9 @@ const styles = StyleSheet.create({
     width: "85%",
   },
 
-  link: {
-    color: "#e8532a",
-    fontWeight: "600",
-  },
+  link: { color: "#e8532a", fontWeight: "600" },
+
+  /* ===== MODAL ===== */
 
   modalWrapper: {
     position: "absolute",
@@ -272,6 +331,13 @@ const styles = StyleSheet.create({
     padding: 20,
   },
 
+  modalIcon: {
+    width: 50,
+    height: 50,
+    alignSelf: "center",
+    marginBottom: 12,
+  },
+
   modalTitle: {
     fontSize: 18,
     fontWeight: "bold",
@@ -287,14 +353,27 @@ const styles = StyleSheet.create({
 
   modalBtn: {
     backgroundColor: "#e8532a",
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderRadius: 10,
-    marginTop: 20,
+    marginTop: 22,
+    marginBottom: 14, //⭐ spacing diperlebar
   },
 
   modalBtnText: {
     color: "white",
-    fontWeight: "bold",
     textAlign: "center",
+    fontWeight: "bold",
+  },
+
+  cancelBtn: {
+    paddingVertical: 10,
+    alignSelf: "center",
+  },
+
+  cancelBtnText: {
+    color: "#e8532a",
+    fontWeight: "600",
+    textAlign: "center",
+    fontSize: 15,
   },
 });
