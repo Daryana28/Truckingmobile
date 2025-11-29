@@ -239,7 +239,7 @@ const styles = StyleSheet.create({
 
   heroWrapper: {
     width: "100%",
-    height: 220,
+    height: 200,
     justifyContent: "center",
     alignItems: "center",
   },
