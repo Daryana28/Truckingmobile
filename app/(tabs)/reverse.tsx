@@ -181,6 +181,7 @@ export default function ReverseScreen() {
       >
         <View style={styles.header}>
           <Text style={styles.hello}>Hello, {userName}</Text>
+          <Text style={styles.subtitle}>Your deliveries for today:</Text>
         </View>
 
         {/* ================= MAIN CARD ================= */}
