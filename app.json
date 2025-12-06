@@ -5,40 +5,69 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
+
     "scheme": "truckingmobile",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
+
     "newArchEnabled": true,
+
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.daryana.truckingmobile",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
+      },
+      "splash": {
+        "image": "./assets/images/splash.png",
+        "resizeMode": "cover",
+        "backgroundColor": "#ffffff"
       }
     },
-    "splash": {
-      "backgroundColor": "#ffffff",
-      "resizeMode": "contain"
-    },
+
     "android": {
+      "package": "com.daryana.truckingmobile",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false,
-      "package": "com.daryana.truckingmobile"
+      "splash": {
+        "image": "./assets/images/splash.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#ffffff"
+      },
+      "softwareKeyboardLayoutMode": "resize"
     },
+
+    "splash": {
+      "image": "./assets/images/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+
     "web": {
-      "output": "static",
-      "favicon": "./assets/images/splash.png"
+      "favicon": "./assets/images/icon.png"
     },
-    "plugins": ["expo-router"],
+
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff",
+          "image": "./assets/images/splash.png"
+        }
+      ]
+    ],
+
     "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
+      "typedRoutes": true
     },
+
     "extra": {
-      "router": {},
+      "router": {
+        "origin": false
+      },
       "eas": {
         "projectId": "42739b5c-97a2-4d18-b172-877db8e3de31"
       }

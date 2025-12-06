@@ -34,7 +34,7 @@ export default function Login() {
     }
 
     await AsyncStorage.setItem("user", JSON.stringify(userData));
-    router.replace("/splash");
+    router.replace("/(tabs)/forward"); 
   }
 
   async function handleLogin() {
@@ -356,7 +356,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 10,
     marginTop: 22,
-    marginBottom: 14, //⭐ spacing diperlebar
+    marginBottom: 14, 
   },
 
   modalBtnText: {
