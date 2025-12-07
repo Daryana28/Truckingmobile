@@ -1,4 +1,3 @@
-// app/(tabs)/forward.tsx
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
@@ -14,6 +13,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
+import * as Location from "expo-location"; // ⬅️ TAMBAHAN
 
 import { API_BASE } from "../../src/api";
 import styles from "../style/homeStyles";
@@ -152,6 +152,33 @@ export default function ForwardScreen() {
   }
 
   // ============================
+  // LOCATION HELPER (BARU)
+  // ============================
+  async function getLocationForStatus() {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+
+      // kalau user tolak, tetep kirim waktu tanpa lokasi
+      if (status !== "granted") {
+        Alert.alert(
+          "Izin Lokasi",
+          "Izin lokasi belum aktif, status akan dikirim tanpa posisi GPS."
+        );
+        return null;
+      }
+
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+
+      return loc.coords; // { latitude, longitude, speed, heading, ... }
+    } catch (e) {
+      console.log("Gagal ambil lokasi:", e);
+      return null; // jangan blokir pengiriman status
+    }
+  }
+
+  // ============================
   // SEND API
   // ============================
   async function sendStatus(body: any) {
@@ -162,24 +189,38 @@ export default function ForwardScreen() {
         return false;
       }
 
+      // 🔹 coba ambil lokasi (opsional)
+      const coords = await getLocationForStatus();
+
+      const payload: any = {
+        direction: "forward",
+        origin: "PT Indonesia Koito",
+        destination:
+          destinationIndex === 0 ? null : destinations[destinationIndex],
+        ...body,
+      };
+
+      // 🔹 kalau berhasil ambil lokasi, tambahkan ke payload
+      if (coords) {
+        payload.lat = coords.latitude;
+        payload.lng = coords.longitude;
+        payload.speed = coords.speed ?? null;
+        payload.heading = coords.heading ?? null;
+      }
+
       const res = await fetch(`${API_BASE}/api/status/update`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          direction: "forward",
-          origin: "PT Indonesia Koito",
-          destination:
-            destinationIndex === 0 ? null : destinations[destinationIndex],
-          ...body,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) return false;
       return true;
-    } catch {
+    } catch (e) {
+      console.log("sendStatus error:", e);
       return false;
     }
   }
@@ -222,7 +263,7 @@ export default function ForwardScreen() {
 
     const t = now();
     const ok = await sendStatus({
-      etdTime: t,
+      etdTime: t, // ⬅️ LOGIC WAKTU TETAP
     });
 
     if (!ok) return;
@@ -238,7 +279,7 @@ export default function ForwardScreen() {
       return Alert.alert("Pilih Destinasi", "Anda harus memilih tujuan dahulu");
 
     const t = now();
-    const ok = await sendStatus({ etaTime: t });
+    const ok = await sendStatus({ etaTime: t }); // ⬅️ LOGIC WAKTU TETAP
     if (!ok) return;
 
     setEtaStatus("sent");
