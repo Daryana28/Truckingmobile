@@ -14,7 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import Svg, { Path } from "react-native-svg"; // SVG Eye Icon
+import Svg, { Path } from "react-native-svg"; 
 import { API_BASE } from "../src/api/index";
 
 export default function Login() {
