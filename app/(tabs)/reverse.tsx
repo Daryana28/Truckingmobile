@@ -1,8 +1,8 @@
-// app/(tabs)/reverse.tsx
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Location from "expo-location";
 import { router } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Pressable,
@@ -33,6 +33,8 @@ export default function ReverseScreen() {
   const FORM_KEY = "reverse_form";
   const STATUS_KEY = "status_reverse";
 
+  const locationSubRef = useRef<Location.LocationSubscription | null>(null);
+
   // ============================================
   // LOAD DATA AWAL
   // ============================================
@@ -45,7 +47,6 @@ export default function ReverseScreen() {
   async function loadUser() {
     const stored = await AsyncStorage.getItem("user");
     if (!stored) return;
-
     const parsed = JSON.parse(stored);
     setUserName(parsed?.name || "");
   }
@@ -53,7 +54,6 @@ export default function ReverseScreen() {
   async function loadStatus() {
     const stored = await AsyncStorage.getItem(STATUS_KEY);
     if (!stored) return;
-
     const parsed = JSON.parse(stored);
     if (parsed?.etd) setEtdStatus(parsed.etd);
     if (parsed?.eta) setEtaStatus(parsed.eta);
@@ -62,7 +62,6 @@ export default function ReverseScreen() {
   async function loadFormData() {
     const stored = await AsyncStorage.getItem(FORM_KEY);
     if (!stored) return;
-
     const parsed = JSON.parse(stored);
     if (parsed?.plateNumber) setPlateNumber(parsed.plateNumber);
     if (parsed?.destinationIndex >= 0)
@@ -85,17 +84,74 @@ export default function ReverseScreen() {
       etd: next.etd ?? etdStatus,
       eta: next.eta ?? etaStatus,
     };
-
     AsyncStorage.setItem(STATUS_KEY, JSON.stringify(data));
   }
 
   // ============================================
-  // API SEND
+  // LOCATION (lebih akurat)
   // ============================================
-  async function sendStatus(body: any) {
+  async function getAccurateCoords() {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Izin Lokasi",
+          "Aktifkan izin lokasi agar posisi terkirim."
+        );
+        return null;
+      }
+
+      const last = await Location.getLastKnownPositionAsync();
+      if (last?.coords) return last.coords;
+
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.BestForNavigation,
+      });
+
+      if ((loc.coords.accuracy ?? 9999) > 80) {
+        Alert.alert("GPS belum stabil", "Tunggu sebentar lalu coba lagi.");
+        return null;
+      }
+
+      return loc.coords;
+    } catch {
+      return null;
+    }
+  }
+
+  // ============================================
+  // API SEND (include lokasi)
+  // ============================================
+  async function sendStatus(
+    body: any,
+    opts?: {
+      requireLocation?: boolean;
+      coords?: Location.LocationObjectCoords;
+      silent?: boolean;
+    }
+  ) {
     try {
       const token = await AsyncStorage.getItem("token");
       if (!token) return false;
+
+      const requireLocation = opts?.requireLocation ?? false;
+      const coords = opts?.coords ?? (await getAccurateCoords());
+      if (requireLocation && !coords) return false;
+
+      const payload: any = {
+        direction: "reverse",
+        origin: destinationIndex === 0 ? null : destinations[destinationIndex],
+        destination: "PT Indonesia Koito",
+        ...body,
+      };
+
+      if (coords) {
+        payload.lat = coords.latitude;
+        payload.lng = coords.longitude;
+        payload.speed = coords.speed ?? null;
+        payload.heading = coords.heading ?? null;
+        payload.accuracy = coords.accuracy ?? null;
+      }
 
       const res = await fetch(`${API_BASE}/api/status/update`, {
         method: "POST",
@@ -103,13 +159,7 @@ export default function ReverseScreen() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          direction: "reverse",
-          origin:
-            destinationIndex === 0 ? null : destinations[destinationIndex],
-          destination: "PT Indonesia Koito",
-          ...body,
-        }),
+        body: JSON.stringify(payload),
       });
 
       return res.ok;
@@ -126,6 +176,44 @@ export default function ReverseScreen() {
   }
 
   // ============================================
+  // REALTIME TRACKING (ETD -> ETA reverse)
+  // ============================================
+  async function startRealtimeTrackingReverse() {
+    stopRealtimeTracking();
+
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert(
+        "Izin Lokasi",
+        "Aktifkan izin lokasi agar realtime berjalan."
+      );
+      return;
+    }
+
+    locationSubRef.current = await Location.watchPositionAsync(
+      {
+        accuracy: Location.Accuracy.BestForNavigation,
+        timeInterval: 5000,
+        distanceInterval: 10,
+      },
+      async (loc) => {
+        await sendStatus({}, { coords: loc.coords, silent: true });
+      }
+    );
+  }
+
+  function stopRealtimeTracking() {
+    if (locationSubRef.current) {
+      locationSubRef.current.remove();
+      locationSubRef.current = null;
+    }
+  }
+
+  useEffect(() => {
+    return () => stopRealtimeTracking();
+  }, []);
+
+  // ============================================
   // HANDLERS
   // ============================================
   async function handleUpdateEtd() {
@@ -133,11 +221,13 @@ export default function ReverseScreen() {
       return Alert.alert("Destinasi kosong", "Isi destinasi di Forward.");
 
     const t = now();
-    const ok = await sendStatus({ etdTime: t });
-    if (!ok) return;
+    const ok = await sendStatus({ etdTime: t }, { requireLocation: true });
+    if (!ok) return Alert.alert("Gagal", "GPS belum siap / jaringan error");
 
     setEtdStatus("sent");
     persistStatus({ etd: "sent" });
+
+    await startRealtimeTrackingReverse();
 
     Alert.alert("ETD Reverse terkirim", t);
   }
@@ -147,16 +237,20 @@ export default function ReverseScreen() {
       return Alert.alert("Destinasi kosong", "Isi destinasi di Forward.");
 
     const t = now();
-    const ok = await sendStatus({ etaTime: t });
-    if (!ok) return;
+    const ok = await sendStatus({ etaTime: t }, { requireLocation: true });
+    if (!ok) return Alert.alert("Gagal", "GPS belum siap / jaringan error");
 
     setEtaStatus("sent");
     persistStatus({ eta: "sent" });
+
+    stopRealtimeTracking();
 
     Alert.alert("ETA Reverse terkirim", t);
   }
 
   async function handleLogout() {
+    stopRealtimeTracking();
+
     await AsyncStorage.multiRemove([
       "user",
       "token",
@@ -184,7 +278,6 @@ export default function ReverseScreen() {
           <Text style={styles.subtitle}>Your deliveries for today:</Text>
         </View>
 
-        {/* ================= MAIN CARD ================= */}
         <View style={styles.card}>
           <View style={styles.iconRow}>
             <Pressable
@@ -249,7 +342,6 @@ export default function ReverseScreen() {
           </View>
         </View>
 
-        {/* ================= SECOND CARD ================= */}
         <View style={styles.card}>
           <Text style={styles.statusValue}>
             {destinationIndex === 0
@@ -285,7 +377,6 @@ export default function ReverseScreen() {
         </View>
       </ScrollView>
 
-      {/* BOTTOM */}
       <View style={styles.bottomContainer}>
         <View style={styles.bottomRow}>
           <View style={[styles.bottomButton, styles.bottomActive]}>

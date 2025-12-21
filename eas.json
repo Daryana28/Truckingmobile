@@ -14,13 +14,16 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE": "https://tramonew.vercel.app"
+        "EXPO_PUBLIC_API_BASE": "https://www.dycode.web.id"
       }
     },
     "production": {
       "autoIncrement": true,
+      "android": {
+        "buildType": "apk"
+      },
       "env": {
-        "EXPO_PUBLIC_API_BASE": "https://tramonew.vercel.app"
+        "EXPO_PUBLIC_API_BASE": "https://www.dycode.web.id"
       }
     }
   },

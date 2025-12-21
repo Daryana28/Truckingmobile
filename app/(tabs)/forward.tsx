@@ -1,7 +1,8 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Location from "expo-location";
 import { router } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Modal,
@@ -13,7 +14,6 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
-import * as Location from "expo-location"; // ⬅️ TAMBAHAN
 
 import { API_BASE } from "../../src/api";
 import styles from "../style/homeStyles";
@@ -57,6 +57,9 @@ export default function ForwardScreen() {
 
   const FORM_KEY = "forward_form";
   const STATUS_KEY = "status_forward";
+
+  // ✅ realtime location subscription
+  const locationSubRef = useRef<Location.LocationSubscription | null>(null);
 
   // ============================
   // AUTO LOGIN CHECK
@@ -152,45 +155,63 @@ export default function ForwardScreen() {
   }
 
   // ============================
-  // LOCATION HELPER (BARU)
+  // LOCATION (lebih akurat)
   // ============================
-  async function getLocationForStatus() {
+  async function getAccurateCoords() {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
-
-      // kalau user tolak, tetep kirim waktu tanpa lokasi
       if (status !== "granted") {
         Alert.alert(
           "Izin Lokasi",
-          "Izin lokasi belum aktif, status akan dikirim tanpa posisi GPS."
+          "Aktifkan izin lokasi agar posisi terkirim."
         );
         return null;
       }
 
+      // cepat kalau ada
+      const last = await Location.getLastKnownPositionAsync();
+      if (last?.coords) return last.coords;
+
+      // lebih akurat
       const loc = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
+        accuracy: Location.Accuracy.BestForNavigation,
       });
 
-      return loc.coords; // { latitude, longitude, speed, heading, ... }
+      // kalau akurasi buruk, minta ulang
+      if ((loc.coords.accuracy ?? 9999) > 80) {
+        Alert.alert("GPS belum stabil", "Tunggu sebentar lalu coba lagi.");
+        return null;
+      }
+
+      return loc.coords;
     } catch (e) {
       console.log("Gagal ambil lokasi:", e);
-      return null; // jangan blokir pengiriman status
+      return null;
     }
   }
 
   // ============================
-  // SEND API
+  // SEND API (dengan coords override supaya watch nggak double GPS)
   // ============================
-  async function sendStatus(body: any) {
+  async function sendStatus(
+    body: any,
+    opts?: {
+      requireLocation?: boolean;
+      coords?: Location.LocationObjectCoords;
+      silent?: boolean;
+    }
+  ) {
     try {
       const token = await AsyncStorage.getItem("token");
       if (!token) {
-        Alert.alert("Belum login", "Silakan login ulang.");
+        if (!opts?.silent) Alert.alert("Belum login", "Silakan login ulang.");
         return false;
       }
 
-      // 🔹 coba ambil lokasi (opsional)
-      const coords = await getLocationForStatus();
+      const requireLocation = opts?.requireLocation ?? false;
+
+      const coords = opts?.coords ?? (await getAccurateCoords());
+      if (requireLocation && !coords) return false;
 
       const payload: any = {
         direction: "forward",
@@ -200,12 +221,12 @@ export default function ForwardScreen() {
         ...body,
       };
 
-      // 🔹 kalau berhasil ambil lokasi, tambahkan ke payload
       if (coords) {
         payload.lat = coords.latitude;
         payload.lng = coords.longitude;
         payload.speed = coords.speed ?? null;
         payload.heading = coords.heading ?? null;
+        payload.accuracy = coords.accuracy ?? null;
       }
 
       const res = await fetch(`${API_BASE}/api/status/update`, {
@@ -217,8 +238,7 @@ export default function ForwardScreen() {
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) return false;
-      return true;
+      return res.ok;
     } catch (e) {
       console.log("sendStatus error:", e);
       return false;
@@ -234,6 +254,46 @@ export default function ForwardScreen() {
   }
 
   // ============================
+  // REALTIME TRACKING (ETD -> ETA)
+  // ============================
+  async function startRealtimeTrackingForward() {
+    // stop dulu kalau sudah jalan
+    stopRealtimeTracking();
+
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert(
+        "Izin Lokasi",
+        "Aktifkan izin lokasi agar realtime berjalan."
+      );
+      return;
+    }
+
+    locationSubRef.current = await Location.watchPositionAsync(
+      {
+        accuracy: Location.Accuracy.BestForNavigation,
+        timeInterval: 5000, // 5 detik
+        distanceInterval: 10, // atau 10 meter
+      },
+      async (loc) => {
+        // kirim lokasi realtime tanpa spam alert
+        await sendStatus({}, { coords: loc.coords, silent: true });
+      }
+    );
+  }
+
+  function stopRealtimeTracking() {
+    if (locationSubRef.current) {
+      locationSubRef.current.remove();
+      locationSubRef.current = null;
+    }
+  }
+
+  useEffect(() => {
+    return () => stopRealtimeTracking();
+  }, []);
+
+  // ============================
   // HANDLERS
   // ============================
   async function handlePlate() {
@@ -243,17 +303,16 @@ export default function ForwardScreen() {
     if (destinationIndex === 0)
       return Alert.alert("Pilih Destinasi", "Anda harus memilih tujuan dahulu");
 
-    const ok = await sendStatus({
-      plate: plateNumber,
-    });
-
+    const ok = await sendStatus(
+      { plate: plateNumber },
+      { requireLocation: false }
+    );
     if (!ok) return Alert.alert("Gagal", "Coba lagi");
 
     setPlateStatus("sent");
     persistStatus({ plate: "sent" });
 
     await syncToReverse();
-
     Alert.alert("Success", "Nopol terkirim");
   }
 
@@ -262,14 +321,16 @@ export default function ForwardScreen() {
       return Alert.alert("Pilih Destinasi", "Anda harus memilih tujuan dahulu");
 
     const t = now();
-    const ok = await sendStatus({
-      etdTime: t, // ⬅️ LOGIC WAKTU TETAP
-    });
 
-    if (!ok) return;
+    // ✅ ETD wajib punya lokasi start
+    const ok = await sendStatus({ etdTime: t }, { requireLocation: true });
+    if (!ok) return Alert.alert("Gagal", "GPS belum siap / jaringan error");
 
     setEtdStatus("sent");
     persistStatus({ etd: "sent" });
+
+    // ✅ mulai realtime tracking setelah ETD
+    await startRealtimeTrackingForward();
 
     Alert.alert("ETD dikirim", t);
   }
@@ -279,16 +340,22 @@ export default function ForwardScreen() {
       return Alert.alert("Pilih Destinasi", "Anda harus memilih tujuan dahulu");
 
     const t = now();
-    const ok = await sendStatus({ etaTime: t }); // ⬅️ LOGIC WAKTU TETAP
-    if (!ok) return;
+
+    // ✅ ETA wajib lokasi end
+    const ok = await sendStatus({ etaTime: t }, { requireLocation: true });
+    if (!ok) return Alert.alert("Gagal", "GPS belum siap / jaringan error");
 
     setEtaStatus("sent");
     persistStatus({ eta: "sent" });
+
+    // ✅ stop tracking setelah ETA
+    stopRealtimeTracking();
 
     Alert.alert("ETA dikirim", t);
   }
 
   async function logout() {
+    stopRealtimeTracking();
     await AsyncStorage.multiRemove(["user", "token", FORM_KEY, STATUS_KEY]);
     router.replace("/login");
   }
@@ -357,7 +424,7 @@ export default function ForwardScreen() {
                 disabled={plateStatus === "sent"}
                 style={[
                   styles.okButton,
-                  styles.buttonPending, // tetap oranye, tidak hijau
+                  styles.buttonPending,
                   plateStatus === "sent" && { opacity: 0.6 },
                 ]}
                 onPress={handlePlate}
@@ -408,7 +475,7 @@ export default function ForwardScreen() {
                 disabled={etdStatus === "sent"}
                 style={[
                   styles.actionButton,
-                  styles.buttonPending, // tetap warna pending
+                  styles.buttonPending,
                   etdStatus === "sent" && { opacity: 0.6 },
                 ]}
                 onPress={handleETD}

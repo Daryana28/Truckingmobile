@@ -5,12 +5,9 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-
     "scheme": "truckingmobile",
     "userInterfaceStyle": "light",
-
     "newArchEnabled": true,
-
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.daryana.truckingmobile",
@@ -23,7 +20,6 @@
         "backgroundColor": "#ffffff"
       }
     },
-
     "android": {
       "package": "com.daryana.truckingmobile",
       "adaptiveIcon": {
@@ -37,17 +33,14 @@
       },
       "softwareKeyboardLayoutMode": "resize"
     },
-
     "splash": {
       "image": "./assets/images/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-
     "web": {
       "favicon": "./assets/images/splash.png"
     },
-
     "plugins": [
       "expo-router",
       [
@@ -59,15 +52,14 @@
         }
       ]
     ],
-
     "experiments": {
       "typedRoutes": true
     },
-
     "extra": {
       "router": {
         "origin": false
       },
+      "apiBase": "https://www.dycode.web.id",
       "eas": {
         "projectId": "42739b5c-97a2-4d18-b172-877db8e3de31"
       }
