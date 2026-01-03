@@ -17,12 +17,66 @@ import { API_BASE } from "../../src/api";
 import styles from "../style/homeStyles";
 
 export default function ReverseScreen() {
+  // ============================
+  // DESTINATIONS (SAMA DENGAN FORWARD)
+  // ============================
   const destinations = [
     "Select Destinasi",
+
+    // YIMM PG LOKAL
     "YIMM PG LOKAL PO 1",
     "YIMM PG LOKAL PO 2",
     "YIMM PG LOKAL PO 3",
+
+    // ✅ YIMM PG EXPORT
+    "YIMM PG EXPORT C1",
+    "YIMM PG EXPORT C2",
+
+    // ✅ YIMM KARAWANG
+    "YIMM KARAWANG PO 1",
+    "YIMM KARAWANG PO 2",
+    "YIMM KARAWANG PO 3",
+
+    // ✅ SIM
+    "SIM CIKARANG C1",
+    "SIM CIKARANG C2",
+    "SIM TAMBUN/VUTEQ",
   ];
+
+  // (opsional) plan time
+  function getPlanTimes() {
+    const key = destinations[destinationIndex];
+    switch (key) {
+      case "YIMM PG LOKAL PO 1":
+        return { etd: "05:00", eta: "08:00" };
+      case "YIMM PG LOKAL PO 2":
+        return { etd: "08:00", eta: "13:00" };
+      case "YIMM PG LOKAL PO 3":
+        return { etd: "14:00", eta: "19:00" };
+
+      case "YIMM PG EXPORT C1":
+        return { etd: "05:00", eta: "08:00" };
+      case "YIMM PG EXPORT C2":
+        return { etd: "13:00", eta: "19:00" };
+
+      case "YIMM KARAWANG PO 1":
+        return { etd: "05:00", eta: "08:00" };
+      case "YIMM KARAWANG PO 2":
+        return { etd: "08:00", eta: "13:00" };
+      case "YIMM KARAWANG PO 3":
+        return { etd: "14:00", eta: "19:00" };
+
+      case "SIM CIKARANG C1":
+        return { etd: "05:00", eta: "08:00" };
+      case "SIM CIKARANG C2":
+        return { etd: "12:00", eta: "15:00" };
+      case "SIM TAMBUN/VUTEQ":
+        return { etd: "10:00", eta: "15:00" };
+
+      default:
+        return { etd: "-", eta: "-" };
+    }
+  }
 
   const [plateNumber, setPlateNumber] = useState("");
   const [etdStatus, setEtdStatus] = useState<"pending" | "sent">("pending");
@@ -30,8 +84,12 @@ export default function ReverseScreen() {
   const [destinationIndex, setDestinationIndex] = useState(0);
   const [userName, setUserName] = useState("");
 
+  // ✅ NEW: delivery date (read-only di Reverse, di-set di Forward)
+  const [deliveryDate, setDeliveryDate] = useState("");
+
   const FORM_KEY = "reverse_form";
   const STATUS_KEY = "status_reverse";
+  const DELIVERY_DATE_KEY = "delivery_date";
 
   const locationSubRef = useRef<Location.LocationSubscription | null>(null);
 
@@ -42,6 +100,7 @@ export default function ReverseScreen() {
     loadUser();
     loadStatus();
     loadFormData();
+    loadDeliveryDate();
   }, []);
 
   async function loadUser() {
@@ -68,6 +127,13 @@ export default function ReverseScreen() {
       setDestinationIndex(parsed.destinationIndex);
   }
 
+  async function loadDeliveryDate() {
+    try {
+      const stored = await AsyncStorage.getItem(DELIVERY_DATE_KEY);
+      if (stored) setDeliveryDate(stored);
+    } catch {}
+  }
+
   // auto save
   useEffect(() => {
     AsyncStorage.setItem(
@@ -85,6 +151,11 @@ export default function ReverseScreen() {
       eta: next.eta ?? etaStatus,
     };
     AsyncStorage.setItem(STATUS_KEY, JSON.stringify(data));
+  }
+
+  // ✅ validasi sederhana YYYY-MM-DD
+  function isValidYmd(s: string) {
+    return /^\d{4}-\d{2}-\d{2}$/.test((s ?? "").trim());
   }
 
   // ============================================
@@ -120,7 +191,7 @@ export default function ReverseScreen() {
   }
 
   // ============================================
-  // API SEND (include lokasi)
+  // API SEND (include lokasi + deliveryDate)
   // ============================================
   async function sendStatus(
     body: any,
@@ -138,10 +209,19 @@ export default function ReverseScreen() {
       const coords = opts?.coords ?? (await getAccurateCoords());
       if (requireLocation && !coords) return false;
 
+      // ✅ ambil deliveryDate terbaru dari storage (kalau state kosong)
+      const dd =
+        (deliveryDate ?? "").trim() ||
+        ((await AsyncStorage.getItem(DELIVERY_DATE_KEY)) ?? "").trim();
+
       const payload: any = {
         direction: "reverse",
         origin: destinationIndex === 0 ? null : destinations[destinationIndex],
         destination: "PT Indonesia Koito",
+
+        // ✅ NEW
+        deliveryDate: dd && isValidYmd(dd) ? dd : null,
+
         ...body,
       };
 
@@ -245,20 +325,41 @@ export default function ReverseScreen() {
 
     stopRealtimeTracking();
 
+    // ✅ COMPLETE: kalau ETA reverse sudah sent → reset semua untuk delivery berikutnya
+    await AsyncStorage.multiRemove([
+      "forward_form",
+      "status_forward",
+      "reverse_form",
+      "status_reverse",
+      DELIVERY_DATE_KEY,
+    ]);
+
+    // reset state lokal
+    setPlateNumber("");
+    setDestinationIndex(0);
+    setEtdStatus("pending");
+    setEtaStatus("pending");
+    setDeliveryDate("");
+
     Alert.alert("ETA Reverse terkirim", t);
   }
 
   async function handleLogout() {
     stopRealtimeTracking();
 
-    await AsyncStorage.multiRemove([
-      "user",
-      "token",
-      "forward_form",
-      "status_forward",
-      "reverse_form",
-      "status_reverse",
-    ]);
+    // ✅ HAPUS AUTH SAJA. Form/status tetap kalau belum complete.
+    await AsyncStorage.multiRemove(["user", "token"]);
+
+    // ✅ kalau sudah complete (ETA reverse sent) → bersihkan semuanya
+    if (etaStatus === "sent") {
+      await AsyncStorage.multiRemove([
+        "forward_form",
+        "status_forward",
+        "reverse_form",
+        "status_reverse",
+        DELIVERY_DATE_KEY,
+      ]);
+    }
 
     router.replace("/login");
   }
@@ -322,6 +423,17 @@ export default function ReverseScreen() {
             </Pressable>
           </View>
 
+          {/* ✅ DELIVERY DATE (read-only) */}
+          <View style={styles.row}>
+            <Text style={styles.label}>Delivery</Text>
+            <Text style={styles.colon}>:</Text>
+            <TextInput
+              style={styles.input}
+              value={deliveryDate}
+              editable={false}
+            />
+          </View>
+
           {/* NOPOL */}
           <View style={styles.row}>
             <Text style={styles.label}>Nopol</Text>
@@ -348,6 +460,19 @@ export default function ReverseScreen() {
               ? "No destination"
               : destinations[destinationIndex]}
           </Text>
+
+          {/* plan time */}
+          <View style={styles.timeRow}>
+            <Text style={styles.timeLabel}>ETD (Plan)</Text>
+            <Text style={styles.timeColon}>:</Text>
+            <Text style={styles.timeValue}>{getPlanTimes().etd}</Text>
+          </View>
+
+          <View style={styles.timeRow}>
+            <Text style={styles.timeLabel}>ETA (Plan)</Text>
+            <Text style={styles.timeColon}>:</Text>
+            <Text style={styles.timeValue}>{getPlanTimes().eta}</Text>
+          </View>
 
           <View style={styles.actionRow}>
             <TouchableOpacity

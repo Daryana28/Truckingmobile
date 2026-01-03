@@ -59,7 +59,7 @@
       "router": {
         "origin": false
       },
-      "apiBase": "https://www.dycode.web.id",
+      "apiBase": "http://192.168.1.3:3000",
       "eas": {
         "projectId": "42739b5c-97a2-4d18-b172-877db8e3de31"
       }

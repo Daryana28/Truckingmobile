@@ -1,38 +1,57 @@
 // src/api/index.ts
 import Constants from "expo-constants";
 
-function pickHost(uri?: string | null) {
-  if (!uri) return undefined;
-  return uri.split(":")[0];
+function extractHost(hostUri?: string | null) {
+  if (!hostUri) return undefined;
+
+  // contoh hostUri:
+  // - "192.168.1.3:8081"
+  // - "exp://192.168.1.3:8081"
+  // - "192.168.1.3:19000"
+  // - "localhost:8081"
+  const cleaned = hostUri
+    .replace(/^exp:\/\//, "")
+    .replace(/^http:\/\//, "")
+    .replace(/^https:\/\//, "");
+  return cleaned.split(":")[0]; // ambil host saja (tanpa port)
 }
 
 function resolveApiBase() {
-  // ✅ DOMAIN PROD (fallback utama untuk APK/production)
+  // ✅ Production domain (dipakai kalau bener-bener production / tidak bisa deteksi host)
   const PROD_DOMAIN = "https://www.dycode.web.id";
 
-  // 1) Explicit override (paling prioritas)
-  if (process.env.EXPO_PUBLIC_API_BASE) {
-    return process.env.EXPO_PUBLIC_API_BASE;
+  // 0) Prioritas tertinggi: env override (paling enak buat dev)
+  // set di .env:
+  // EXPO_PUBLIC_API_BASE=http://192.168.1.3:3000
+  const envBase = process.env.EXPO_PUBLIC_API_BASE;
+  if (envBase && envBase.trim().length > 0) return envBase.trim();
+
+  // 1) Ambil dari app.json -> expo.extra.apiBase (kalau ada)
+  const expoConfig = Constants.expoConfig;
+  const extraBase = expoConfig?.extra?.apiBase;
+  if (extraBase && String(extraBase).trim().length > 0)
+    return String(extraBase).trim();
+
+  // 2) Expo Go / Dev Client: ambil host dari hostUri
+  // ini yang biasanya paling akurat saat kamu jalanin `npx expo start`
+  const hostFromHostUri = extractHost(expoConfig?.hostUri);
+  if (hostFromHostUri) {
+    // ✅ Next.js kamu jalan di port 3000
+    return `http://${hostFromHostUri}:3000`;
   }
 
-  // ✅ 1.5) Ambil dari app.json -> expo.extra.apiBase (kalau ada)
-  const expoConfig = Constants.expoConfig;
-  const apiBaseFromExtra = expoConfig?.extra?.apiBase;
-  if (apiBaseFromExtra) return String(apiBaseFromExtra);
+  // 3) Debugger host (kadang ada di extra)
+  const debuggerHost = extractHost(
+    (expoConfig as any)?.extra?.expoGo?.debuggerHost
+  );
+  if (debuggerHost) return `http://${debuggerHost}:3000`;
 
-  // 2) Use Expo host/debugger host (works in Expo Go / dev client)
-  const hostFromExpo = pickHost(expoConfig?.hostUri);
-  if (hostFromExpo) return `http://${hostFromExpo}:3000`;
-
-  const hostFromDebugger = pickHost(expoConfig?.extra?.expoGo?.debuggerHost);
-  if (hostFromDebugger) return `http://${hostFromDebugger}:3000`;
-
-  // 3) On web, reuse current hostname
+  // 4) Web (kalau expo web)
   if (typeof window !== "undefined") {
     return `http://${window.location.hostname}:3000`;
   }
 
-  // 4) Fallback (✅ ganti dari localhost ke domain production)
+  // 5) Fallback terakhir: production
   return PROD_DOMAIN;
 }
 
