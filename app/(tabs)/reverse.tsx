@@ -2,7 +2,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
 import { router } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Pressable,
@@ -16,66 +16,80 @@ import {
 import { API_BASE } from "../../src/api";
 import styles from "../style/homeStyles";
 
+type PlanItem = {
+  destination: string;
+  group: string | null;
+  forwardEtd: string | null;
+  forwardEta: string | null;
+  reverseEtd: string | null;
+  reverseEta: string | null;
+  updatedAt?: string | null;
+};
+
 export default function ReverseScreen() {
   // ============================
-  // DESTINATIONS (SAMA DENGAN FORWARD)
+  // ✅ DESTINATIONS dari API (fallback hardcode jika gagal)
   // ============================
-  const destinations = [
+  const fallbackDestinations = [
     "Select Destinasi",
-
-    // YIMM PG LOKAL
     "YIMM PG LOKAL PO 1",
     "YIMM PG LOKAL PO 2",
     "YIMM PG LOKAL PO 3",
-
-    // ✅ YIMM PG EXPORT
     "YIMM PG EXPORT C1",
     "YIMM PG EXPORT C2",
-
-    // ✅ YIMM KARAWANG
     "YIMM KARAWANG PO 1",
     "YIMM KARAWANG PO 2",
     "YIMM KARAWANG PO 3",
-
-    // ✅ SIM
     "SIM CIKARANG C1",
     "SIM CIKARANG C2",
     "SIM TAMBUN/VUTEQ",
   ];
 
-  // (opsional) plan time
+  const [plans, setPlans] = useState<PlanItem[]>([]);
+
+  const planMap = useMemo(() => {
+    const m = new Map<string, PlanItem>();
+    for (const p of plans) {
+      if (p?.destination) m.set(p.destination, p);
+    }
+    return m;
+  }, [plans]);
+
+  const destinations = useMemo(() => {
+    if (plans.length)
+      return ["Select Destinasi", ...plans.map((p) => p.destination)];
+    return fallbackDestinations;
+  }, [plans]);
+
+  async function fetchPlans() {
+    try {
+      const res = await fetch(`${API_BASE}/api/plan/list`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json?.ok && Array.isArray(json?.plans)) {
+        setPlans(json.plans as PlanItem[]);
+      }
+    } catch {}
+  }
+
+  useEffect(() => {
+    fetchPlans();
+    const id = setInterval(fetchPlans, 60000);
+    return () => clearInterval(id);
+  }, []);
+
   function getPlanTimes() {
     const key = destinations[destinationIndex];
-    switch (key) {
-      case "YIMM PG LOKAL PO 1":
-        return { etd: "05:00", eta: "08:00" };
-      case "YIMM PG LOKAL PO 2":
-        return { etd: "08:00", eta: "13:00" };
-      case "YIMM PG LOKAL PO 3":
-        return { etd: "14:00", eta: "19:00" };
+    const p = planMap.get(key);
+    if (!p) return { etd: "-", eta: "-" };
 
-      case "YIMM PG EXPORT C1":
-        return { etd: "05:00", eta: "08:00" };
-      case "YIMM PG EXPORT C2":
-        return { etd: "13:00", eta: "19:00" };
-
-      case "YIMM KARAWANG PO 1":
-        return { etd: "05:00", eta: "08:00" };
-      case "YIMM KARAWANG PO 2":
-        return { etd: "08:00", eta: "13:00" };
-      case "YIMM KARAWANG PO 3":
-        return { etd: "14:00", eta: "19:00" };
-
-      case "SIM CIKARANG C1":
-        return { etd: "05:00", eta: "08:00" };
-      case "SIM CIKARANG C2":
-        return { etd: "12:00", eta: "15:00" };
-      case "SIM TAMBUN/VUTEQ":
-        return { etd: "10:00", eta: "15:00" };
-
-      default:
-        return { etd: "-", eta: "-" };
-    }
+    // ✅ Reverse plan
+    return {
+      etd: p.reverseEtd ?? "-",
+      eta: p.reverseEta ?? "-",
+    };
   }
 
   const [plateNumber, setPlateNumber] = useState("");
@@ -209,7 +223,6 @@ export default function ReverseScreen() {
       const coords = opts?.coords ?? (await getAccurateCoords());
       if (requireLocation && !coords) return false;
 
-      // ✅ ambil deliveryDate terbaru dari storage (kalau state kosong)
       const dd =
         (deliveryDate ?? "").trim() ||
         ((await AsyncStorage.getItem(DELIVERY_DATE_KEY)) ?? "").trim();
@@ -218,10 +231,7 @@ export default function ReverseScreen() {
         direction: "reverse",
         origin: destinationIndex === 0 ? null : destinations[destinationIndex],
         destination: "PT Indonesia Koito",
-
-        // ✅ NEW
         deliveryDate: dd && isValidYmd(dd) ? dd : null,
-
         ...body,
       };
 
@@ -308,7 +318,6 @@ export default function ReverseScreen() {
     persistStatus({ etd: "sent" });
 
     await startRealtimeTrackingReverse();
-
     Alert.alert("ETD Reverse terkirim", t);
   }
 
@@ -325,7 +334,6 @@ export default function ReverseScreen() {
 
     stopRealtimeTracking();
 
-    // ✅ COMPLETE: kalau ETA reverse sudah sent → reset semua untuk delivery berikutnya
     await AsyncStorage.multiRemove([
       "forward_form",
       "status_forward",
@@ -334,7 +342,6 @@ export default function ReverseScreen() {
       DELIVERY_DATE_KEY,
     ]);
 
-    // reset state lokal
     setPlateNumber("");
     setDestinationIndex(0);
     setEtdStatus("pending");
@@ -347,10 +354,8 @@ export default function ReverseScreen() {
   async function handleLogout() {
     stopRealtimeTracking();
 
-    // ✅ HAPUS AUTH SAJA. Form/status tetap kalau belum complete.
     await AsyncStorage.multiRemove(["user", "token"]);
 
-    // ✅ kalau sudah complete (ETA reverse sent) → bersihkan semuanya
     if (etaStatus === "sent") {
       await AsyncStorage.multiRemove([
         "forward_form",
@@ -438,7 +443,6 @@ export default function ReverseScreen() {
           <View style={styles.row}>
             <Text style={styles.label}>Nopol</Text>
             <Text style={styles.colon}>:</Text>
-
             <TextInput
               style={styles.input}
               value={plateNumber}
@@ -461,7 +465,6 @@ export default function ReverseScreen() {
               : destinations[destinationIndex]}
           </Text>
 
-          {/* plan time */}
           <View style={styles.timeRow}>
             <Text style={styles.timeLabel}>ETD (Plan)</Text>
             <Text style={styles.timeColon}>:</Text>
